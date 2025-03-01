@@ -96,7 +96,7 @@ void processFonts(const QVariantMap& args)
 			args2.extraFuncs = args2.glContext->extraFunctions();
 			args2.glShader = std::make_unique<QOpenGLShaderProgram>();
 			if(!args2.glShader->create()) throw std::runtime_error("Failed to create shader!");
-			QFile res(":/shader1.glsl");
+			QFile res(args2.distType == DistanceType::Eucledian ? ":/shader1.glsl" : ":/shader2.glsl");
 			if(res.open(QFile::ReadOnly)) {
 				QByteArray shdrArr = res.readAll();
 				if(!args2.glShader->addCacheableShaderFromSourceCode(QOpenGLShader::Compute,shdrArr)) {
@@ -314,8 +314,8 @@ QImage produceSdfGL(const QImage& source, unsigned width, unsigned height, const
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
 	UniformForCompute uniform;
-	uniform.width = args.samples_to_check_x;
-	uniform.height = args.samples_to_check_y;
+	uniform.width = args.samples_to_check_x ? args.samples_to_check_x / 2 : width / 2;
+	uniform.height = args.samples_to_check_y ? args.samples_to_check_y / 2 : height / 2;
 	args.glFuncs->glGenBuffers(1,&uniformBuffer);
 	args.glFuncs->glBindBuffer(GL_UNIFORM_BUFFER,uniformBuffer);
 	args.glFuncs->glBufferData(GL_UNIFORM_BUFFER,sizeof(UniformForCompute),&uniform,  GL_STATIC_DRAW);

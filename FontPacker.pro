@@ -26,7 +26,8 @@ DISTFILES += \
     .gitignore \
     LICENSE \
     README.md \
-    shader1.glsl
+    shader1.glsl \
+    shader2.glsl
 
 HEADERS += \
     ProcessFonts.hpp
