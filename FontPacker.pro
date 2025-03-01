@@ -4,7 +4,7 @@ CONFIG += c++2a cmdline
 
 INCLUDEPATH += /usr/include/freetype2
 INCLUDEPATH += I/usr/include/harfbuzz
-LIBS += -lfreetype
+LIBS += -lfreetype -fopenmp
 
 # You can make your code fail to compile if it uses deprecated APIs.
 # In order to do so, uncomment the following line.

@@ -10,6 +10,24 @@
 #include <cstring>
 #include <cstdlib>
 #include <memory>
+#include <vector>
+#include <cmath>
+#include <glm/glm.hpp>
+
+#ifdef HIRES
+const unsigned intendedSize = 4096;
+const unsigned padding = 300;
+const unsigned max_samples_to_check = 128;
+const unsigned half_samples_to_check = max_samples_to_check / 2;
+const unsigned to_scale = intendedSize - padding;
+#else
+const unsigned intendedSize = 1024;
+const unsigned padding = 100;
+const unsigned max_samples_to_check = 64;
+const unsigned half_samples_to_check = max_samples_to_check / 2;
+const unsigned to_scale = intendedSize - padding;
+#endif
+
 
 void processFonts(const QVariantMap& args)
 {
@@ -34,7 +52,7 @@ void processFonts(const QVariantMap& args)
 	if ( error ) {
 		throw std::runtime_error("Failed to set character sizes.");
 	}*/
-	error = FT_Set_Pixel_Sizes(face,3896,3896);
+	error = FT_Set_Pixel_Sizes(face,to_scale,to_scale);
 	if ( error ) {
 		throw std::runtime_error("Failed to set character sizes.");
 	}
@@ -118,7 +136,46 @@ public:
 	}
 };
 
-const unsigned padding = 300;
+
+QImage produceSdf(const QImage& source) {
+	QImage sdf(source.width(),source.height(),QImage::Format_Grayscale8);
+	std::vector<float> tmpFloat(source.width() * source.height());
+	//double maxDist = sqrt(static_cast<double>(source.width()) * static_cast<double>(source.height()));
+	const double maxDist = static_cast<double>(max_samples_to_check);
+	auto calculateSdfForPixel = [&source,maxDist](unsigned x, unsigned y, bool isInside) {
+		const unsigned min_offset_x = static_cast<unsigned>(std::max( static_cast<int>(x)-static_cast<int>(half_samples_to_check), 0 ));
+		const unsigned max_offset_x = static_cast<unsigned>(std::min( static_cast<int>(x)+static_cast<int>(half_samples_to_check), source.width() ));
+		const unsigned min_offset_y = static_cast<unsigned>(std::max( static_cast<int>(y)-static_cast<int>(half_samples_to_check), 0 ));
+		const unsigned max_offset_y = static_cast<unsigned>(std::min( static_cast<int>(y)+static_cast<int>(half_samples_to_check), source.height() ));
+		double minDistance = maxDist;
+		for(unsigned offset_y = min_offset_y; offset_y < max_offset_y; ++offset_y ) {
+			const uchar* src = source.scanLine(offset_y);
+			for(unsigned offset_x = min_offset_x; offset_x < max_offset_x; ++offset_x ) {
+				bool isEdge = (src[offset_x] >= 128) != isInside;
+				if(isEdge) {
+					double dist = glm::distance(glm::dvec2(offset_x,offset_y),glm::dvec2(x,y));
+					if(dist <= minDistance) minDistance = dist;
+				}
+			}
+		}
+		return minDistance / maxDist;
+	};
+	int height = sdf.height();
+	int width = sdf.width();
+
+	#pragma omp parallel for collapse(2)
+	for(int y = 0; y < height;++y) {
+		uchar* row = sdf.scanLine(y);
+		const uchar* srcRow = source.scanLine(y);
+		for(int x = 0; x < width; ++x) {
+			const bool isInside = srcRow[x] >= 128;
+			double sdfValue = calculateSdfForPixel(x,y,isInside);
+			sdfValue = 1.0 - (isInside ? 0.5 - (sdfValue / 2.0) : 0.5 + (sdfValue / 2.0));
+			row[x] = static_cast<uint8_t>(sdfValue * 128.0);
+		}
+	}
+	return sdf;
+}
 
 void StoredCharacter::fromFreeTypeGlyph(FT_GlyphSlot glyphSlot, SDfGenerationMode genMode, SDFType type)
 {
@@ -146,6 +203,7 @@ void StoredCharacter::fromFreeTypeGlyph(FT_GlyphSlot glyphSlot, SDfGenerationMod
 		const uchar* inRow = &glyphSlot->bitmap.buffer[(y-padding)*width_org];
 		memcpy(&row[padding],inRow,width_org);
 	}
+	img = produceSdf(img);
 	img = img.scaled(32,32,Qt::IgnoreAspectRatio,Qt::SmoothTransformation);
 	QByteArray tmpArr;
 	QBuffer buff(&tmpArr);
