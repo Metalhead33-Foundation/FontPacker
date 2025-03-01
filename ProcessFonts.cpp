@@ -328,25 +328,26 @@ void StoredCharacter::fromFreeTypeGlyph(FT_GlyphSlot glyphSlot, const SDFGenerat
 								   .scaled(args.intendedSize,args.intendedSize,Qt::AspectRatioMode::IgnoreAspectRatio,Qt::TransformationMode::SmoothTransformation),
 							   QOpenGLTexture::DontGenerateMipMaps);
 			QImage newimg(tex.width(), tex.height(), QImage::Format_Grayscale8);
-			newimg.fill(0);
-			std::cout << tex.textureId() << ' ' << tex.width() << ' ' << tex.height() << std::endl;
-			tex.release();
-			QOpenGLTexture outTex(newimg,QOpenGLTexture::DontGenerateMipMaps);
-			glBindTexture(GL_TEXTURE_2D, outTex.textureId());
-			std::cout << outTex.textureId() << ' ' << outTex.width() << ' ' << outTex.height() << std::endl;
+			GLuint newTexId;
+			args.glFuncs->glGenTextures(1,&newTexId);
+			args.glFuncs->glBindTexture(GL_TEXTURE_2D,newTexId);
+			args.glFuncs->glTexImage2D(GL_TEXTURE_2D,0,GL_R8,newimg.width(),newimg.height(),0,GL_RED,GL_UNSIGNED_BYTE, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 			args.glFuncs->glUseProgram(args.glShader->programId());
 			int imageUniform = args.glShader->uniformLocation("outputImage");
-			args.extraFuncs->glBindImageTexture(1, outTex.textureId(), 0, false, 0, GL_WRITE_ONLY, GL_R8 );
+			args.extraFuncs->glBindImageTexture(1, newTexId, 0, false, 0, GL_WRITE_ONLY, GL_R8 );
 			args.glFuncs->glUniform1i(imageUniform,1);
-			args.extraFuncs->glDispatchCompute(outTex.width(),outTex.height(),1);
+			args.extraFuncs->glDispatchCompute(newimg.width(),newimg.height(),1);
 			args.extraFuncs->glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 /*
 	texture.bindAsImage(unit,bindingType);
 	glUniform1i(bindingPoint, unit);
 */
-			QByteArray pixelData(outTex.width() * outTex.height(), Qt::Uninitialized);
-			glBindTexture(GL_TEXTURE_2D,outTex.textureId());
-			glGetTexImage(outTex.target(), 0, outTex.format(), QOpenGLTexture::PixelType::UInt8, pixelData.data() );
+			QByteArray pixelData(newimg.width() * newimg.height(), Qt::Uninitialized);
+			args.glFuncs->glBindTexture(GL_TEXTURE_2D,newTexId);
+			glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_BYTE, pixelData.data() );
+			args.glFuncs->glDeleteTextures(1,&newTexId);
 			for(int y = 0; y < newimg.height(); ++y) {
 				uchar* scanline = newimg.scanLine(y);
 				const char* buffptr = &pixelData[y*newimg.width()];
