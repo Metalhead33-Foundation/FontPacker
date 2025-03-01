@@ -16,6 +16,17 @@ enum SDFType {
 	SDF,
 	MSDFA
 };
+enum DistanceType {
+	Manhattan,
+	Eucledian
+};
+
+struct SDFGenerationArguments {
+	SDfGenerationMode mode = SOFTWARE;
+	SDFType type = SDF;
+	DistanceType distType = Manhattan;
+	void fromArgs(const QVariantMap& args);
+};
 
 typedef struct FT_GlyphSlotRec_*  FT_GlyphSlot;
 struct StoredCharacter {
@@ -29,7 +40,7 @@ struct StoredCharacter {
 	void toCbor(QCborMap& cbor) const;
 	QCborMap toCbor(void) const;
 	void fromCbor(const QCborMap& cbor);
-	void fromFreeTypeGlyph(FT_GlyphSlot glyphSlot, SDfGenerationMode genMode = SOFTWARE, SDFType type = SDF);
+	void fromFreeTypeGlyph(FT_GlyphSlot glyphSlot, const SDFGenerationArguments& args = SDFGenerationArguments());
 };
 
 void processFonts(const QVariantMap& args);

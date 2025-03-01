@@ -12,7 +12,9 @@
 #include <memory>
 #include <vector>
 #include <cmath>
+#include <QBitArray>
 #include <glm/glm.hpp>
+#include <iostream>
 
 #ifdef HIRES
 const unsigned intendedSize = 4096;
@@ -68,8 +70,10 @@ void processFonts(const QVariantMap& args)
 			++validGylph;
 			error = FT_Load_Glyph(face,glyph_index,FT_LOAD_NO_BITMAP);
 			if ( error ) throw std::runtime_error("Failed to load glyph.");
+			SDFGenerationArguments args2;
+			args2.fromArgs(args);
 			StoredCharacter strChar;
-			strChar.fromFreeTypeGlyph(face->glyph);
+			strChar.fromFreeTypeGlyph(face->glyph, args2);
 		}
 	}
 	QTextStream strm(stdout);
@@ -136,51 +140,96 @@ public:
 	}
 };
 
+struct TmpStoredDist {
+	double f;
+	bool isInside;
+};
 
-QImage produceSdf(const QImage& source) {
-	QImage sdf(source.width(),source.height(),QImage::Format_Grayscale8);
-	std::vector<float> tmpFloat(source.width() * source.height());
+QImage produceSdf(const QBitArray& source, unsigned width, unsigned height, const SDFGenerationArguments& args) {
+	QImage sdf(width,height,QImage::Format_Grayscale8);
+	//std::vector<float> tmpFloat(with * height);
 	//double maxDist = sqrt(static_cast<double>(source.width()) * static_cast<double>(source.height()));
-	const double maxDist = static_cast<double>(max_samples_to_check);
-	auto calculateSdfForPixel = [&source,maxDist](unsigned x, unsigned y, bool isInside) {
+	const double maxDist = (args.distType == DistanceType::Eucledian)
+							   ? (half_samples_to_check * std::sqrt(2.0))
+							   : static_cast<double>(max_samples_to_check);
+
+	const auto distanceCalculator = (args.distType == DistanceType::Eucledian)
+										?
+										( [](const glm::ivec2& a, const glm::ivec2& b) {
+											  return glm::distance(glm::dvec2(a),glm::dvec2(b));
+										} )
+										:
+										( [](const glm::ivec2& a, const glm::ivec2& b) {
+											  return static_cast<double>(std::abs(a.x - b.x) + std::abs(a.y - b.y));
+										  } );
+
+	std::vector<TmpStoredDist> storedDists(width * height);
+
+	auto calculateSdfForPixel = [&source,&distanceCalculator,maxDist,width,height](unsigned x, unsigned y, bool isInside) {
 		const unsigned min_offset_x = static_cast<unsigned>(std::max( static_cast<int>(x)-static_cast<int>(half_samples_to_check), 0 ));
-		const unsigned max_offset_x = static_cast<unsigned>(std::min( static_cast<int>(x)+static_cast<int>(half_samples_to_check), source.width() ));
+		const unsigned max_offset_x = static_cast<unsigned>(std::min( static_cast<int>(x)+static_cast<int>(half_samples_to_check), static_cast<int>(width) ));
 		const unsigned min_offset_y = static_cast<unsigned>(std::max( static_cast<int>(y)-static_cast<int>(half_samples_to_check), 0 ));
-		const unsigned max_offset_y = static_cast<unsigned>(std::min( static_cast<int>(y)+static_cast<int>(half_samples_to_check), source.height() ));
+		const unsigned max_offset_y = static_cast<unsigned>(std::min( static_cast<int>(y)+static_cast<int>(half_samples_to_check), static_cast<int>(height) ));
 		double minDistance = maxDist;
 		for(unsigned offset_y = min_offset_y; offset_y < max_offset_y; ++offset_y ) {
-			const uchar* src = source.scanLine(offset_y);
+			const unsigned row_start = offset_y * width;
 			for(unsigned offset_x = min_offset_x; offset_x < max_offset_x; ++offset_x ) {
-				bool isEdge = (src[offset_x] >= 128) != isInside;
+				bool isEdge = source.testBit(row_start+offset_x) != isInside;
 				if(isEdge) {
-					double dist = glm::distance(glm::dvec2(offset_x,offset_y),glm::dvec2(x,y));
+					double dist = distanceCalculator(glm::ivec2(x,y),glm::ivec2(offset_x,offset_y));
 					if(dist <= minDistance) minDistance = dist;
 				}
 			}
 		}
-		return minDistance / maxDist;
+		return minDistance;
 	};
-	int height = sdf.height();
-	int width = sdf.width();
+	#pragma omp parallel for collapse(2)
+	for(int y = 0; y < height;++y) {
+		TmpStoredDist* out_row_start = &storedDists[y * width];
+		const unsigned in_row_start = y * width;
+		for(int x = 0; x < width; ++x) {
+			const bool isInside = source.testBit(in_row_start+x);
+			out_row_start[x].isInside = isInside;
+			out_row_start[x].f = calculateSdfForPixel(x,y,isInside);
+		}
+	}
+
+	double maxDistIn = 0.0;
+	double maxDistOut = 0.0;
+	for(const auto& it : storedDists) {
+		if(it.isInside) {
+			maxDistIn = std::max(maxDistIn,it.f);
+		} else {
+			maxDistOut = std::max(maxDistOut,it.f);
+		}
+	}
+	std::cout << maxDistIn << ' ' << maxDistOut << '\n';
+	for(auto& it : storedDists) {
+		if(it.isInside) {
+			it.f /= maxDistIn;
+		} else {
+			it.f /= maxDistOut;
+		}
+	}
 
 	#pragma omp parallel for collapse(2)
 	for(int y = 0; y < height;++y) {
 		uchar* row = sdf.scanLine(y);
-		const uchar* srcRow = source.scanLine(y);
+		const TmpStoredDist* in_row_start = &storedDists[y * width];
 		for(int x = 0; x < width; ++x) {
-			const bool isInside = srcRow[x] >= 128;
-			double sdfValue = calculateSdfForPixel(x,y,isInside);
-			sdfValue = 1.0 - (isInside ? 0.5 - (sdfValue / 2.0) : 0.5 + (sdfValue / 2.0));
-			row[x] = static_cast<uint8_t>(sdfValue * 128.0);
+			const TmpStoredDist& in = in_row_start[x];
+			double sdfValue = (in.isInside ? 0.5 + (in.f / 2.0) : 0.5 - (in.f / 2.0));
+			row[x] = static_cast<uint8_t>(sdfValue * 255.0);
 		}
 	}
 	return sdf;
 }
 
-void StoredCharacter::fromFreeTypeGlyph(FT_GlyphSlot glyphSlot, SDfGenerationMode genMode, SDFType type)
+void StoredCharacter::fromFreeTypeGlyph(FT_GlyphSlot glyphSlot, const SDFGenerationArguments& args)
 {
 	auto error = FT_Render_Glyph( glyphSlot, FT_RENDER_MODE_NORMAL);
 	if ( error ) throw std::runtime_error("Failed to render glyph.");
+	if(glyphSlot->bitmap.rows <= 1 || glyphSlot->bitmap.width <= 1) return;
 
 	const unsigned width_org = glyphSlot->bitmap.width;
 	const unsigned height_org = glyphSlot->bitmap.rows;
@@ -190,21 +239,22 @@ void StoredCharacter::fromFreeTypeGlyph(FT_GlyphSlot glyphSlot, SDfGenerationMod
 	QTextStream strm(stdout);
 	strm << "Width: " << glyphSlot->bitmap.width << '\n';
 	strm << "Rows: " << glyphSlot->bitmap.rows << '\n';
-	QByteArray tmpArrA = QByteArray::fromRawData(reinterpret_cast<char*>(glyphSlot->bitmap.buffer),glyphSlot->bitmap.width * glyphSlot->bitmap.rows);
-	//QImage img(glyphSlot->bitmap.buffer,glyphSlot->bitmap.width,glyphSlot->bitmap.rows,QImage::Format_Grayscale8);
 
-	QImage img(width_padded,height_padded,QImage::Format_Grayscale8);
-	img.fill(0);
-	//uchar* bits = img.bits();
-	for(unsigned y = padding; y < height_padded-padding;++y) {
-		//uchar* row = &bits[y*width_padded];
-		uchar* row = img.scanLine(y);
-		//const char* inRow = &tmpArrA[(y-padding)*width_org];
+	//QByteArray tmpArrA = QByteArray::fromRawData(reinterpret_cast<char*>(glyphSlot->bitmap.buffer),glyphSlot->bitmap.width * glyphSlot->bitmap.rows);
+	QBitArray newBits(width_padded * height_padded,false);
+	for(unsigned y = padding; y < height_padded-padding; ++y) {
+		const unsigned row_start = y*width_padded;
+		const unsigned row_start_org = (y-padding)*width_org;
 		const uchar* inRow = &glyphSlot->bitmap.buffer[(y-padding)*width_org];
-		memcpy(&row[padding],inRow,width_org);
+		for(unsigned x = padding; x < width_padded-padding;++x) {
+			const unsigned row_i = row_start + x;
+			const unsigned row_i_og = row_start_org + x - padding;
+			newBits.setBit(row_i,inRow[x-padding] >= 128);
+		}
 	}
-	img = produceSdf(img);
-	img = img.scaled(32,32,Qt::IgnoreAspectRatio,Qt::SmoothTransformation);
+
+	QImage img = produceSdf(newBits, width_padded, height_padded, args);
+	//img = img.scaled(32,32,Qt::IgnoreAspectRatio,Qt::SmoothTransformation);
 	QByteArray tmpArr;
 	QBuffer buff(&tmpArr);
 	buff.open(QIODevice::WriteOnly);
@@ -215,5 +265,100 @@ void StoredCharacter::fromFreeTypeGlyph(FT_GlyphSlot glyphSlot, SDfGenerationMod
 		f.write(tmpArr);
 		f.flush();
 		f.close();
+	}
+}
+
+const QString mode_str = QStringLiteral("mode");
+const QString type_str = QStringLiteral("type");
+const QString dist_str = QStringLiteral("dist");
+
+const QString software_mode_str = QStringLiteral("Software");
+const QString opengl_mode_str = QStringLiteral("OpenGL");
+const QString opencl_mode_str = QStringLiteral("OpenCL");
+const QString sdf_mode_str = QStringLiteral("SDF");
+const QString msdfa_mode_str = QStringLiteral("MSDFA");
+const QString manhattan_mode_str = QStringLiteral("Manhattan");
+const QString eucledian_mode_str = QStringLiteral("Eucledian");
+
+void SDFGenerationArguments::fromArgs(const QVariantMap& args)
+{
+	// Mode
+	{
+		QVariant genMod = args.value(mode_str,software_mode_str);
+		switch (genMod.typeId() ) {
+			case QMetaType::QString: {
+				QString genModS = genMod.toString();
+				if(!genModS.compare(software_mode_str,Qt::CaseInsensitive)) this->mode = SDfGenerationMode::SOFTWARE;
+				else if(!genModS.compare(opengl_mode_str,Qt::CaseInsensitive)) this->mode = SDfGenerationMode::OPENGL_COMPUTE;
+				else if(!genModS.compare(opencl_mode_str,Qt::CaseInsensitive)) this->mode = SDfGenerationMode::OPENCL;
+				else this->mode = SDfGenerationMode::SOFTWARE;
+				break;
+			}
+			case QMetaType::Int: {
+				this->mode = static_cast<SDfGenerationMode>(genMod.toInt());
+				break;
+			}
+			case QMetaType::UInt: {
+				this->mode = static_cast<SDfGenerationMode>(genMod.toUInt());
+				break;
+			}
+			default: {
+				this->mode = SDfGenerationMode::SOFTWARE;
+				break;
+			}
+		}
+	}
+
+
+	// Type
+	{
+		QVariant sdfType = args.value(type_str,sdf_mode_str);
+		switch (sdfType.typeId() ) {
+			case QMetaType::QString: {
+				QString sdfTypeS = sdfType.toString();
+				if(!sdfTypeS.compare(sdf_mode_str,Qt::CaseInsensitive)) this->type = SDFType::SDF;
+				else if(!sdfTypeS.compare(msdfa_mode_str,Qt::CaseInsensitive)) this->type = SDFType::MSDFA;
+				else this->type = SDFType::SDF;
+				break;
+			}
+			case QMetaType::Int: {
+				this->type = static_cast<SDFType>(sdfType.toInt());
+				break;
+			}
+			case QMetaType::UInt: {
+				this->type = static_cast<SDFType>(sdfType.toUInt());
+				break;
+			}
+			default: {
+				this->type = SDFType::SDF;
+				break;
+			}
+		}
+	}
+
+	// Dist
+	{
+		QVariant distType = args.value(dist_str,manhattan_mode_str);
+		switch (distType.typeId() ) {
+			case QMetaType::QString: {
+				QString distTypeS = distType.toString();
+				if(!distTypeS.compare(manhattan_mode_str,Qt::CaseInsensitive)) this->distType = DistanceType::Manhattan;
+				else if(!distTypeS.compare(eucledian_mode_str,Qt::CaseInsensitive)) this->distType = DistanceType::Eucledian;
+				else this->distType = DistanceType::Manhattan;
+				break;
+			}
+			case QMetaType::Int: {
+				this->distType = static_cast<DistanceType>(distType.toInt());
+				break;
+			}
+			case QMetaType::UInt: {
+				this->distType = static_cast<DistanceType>(distType.toUInt());
+				break;
+			}
+			default: {
+				this->distType = DistanceType::Manhattan;;
+				break;
+			}
+		}
 	}
 }
