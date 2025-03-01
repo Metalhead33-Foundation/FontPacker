@@ -282,6 +282,69 @@ QImage produceSdfSoft(const QBitArray& source, unsigned width, unsigned height, 
 	return sdf;
 }
 
+struct STD140 UniformForCompute {
+	int32_t width, height;
+	int32_t padding[2];
+};
+QImage produceSdfGL(const QImage& source, unsigned width, unsigned height, const SDFGenerationArguments& args) {
+	glPixelStorei( GL_PACK_ALIGNMENT, 1);
+	glPixelStorei(  GL_UNPACK_ALIGNMENT, 1);
+	/*QOpenGLTexture tex(producePaddedVariant(glyphSlot->bitmap.buffer, padding, width_org, height_org, width_padded, height_padded)
+								   .scaled(args.intendedSize,args.intendedSize,Qt::AspectRatioMode::IgnoreAspectRatio,Qt::TransformationMode::SmoothTransformation),
+							   QOpenGLTexture::DontGenerateMipMaps);
+			tex.setMagnificationFilter(QOpenGLTexture::Filter::Nearest);
+			tex.setMinificationFilter(QOpenGLTexture::Filter::Nearest);*/
+	QImage newimg(source.width(), source.height(), QImage::Format_Grayscale8);
+	GLuint oldTexId, newTexId, uniformBuffer;
+	args.glFuncs->glGenTextures(1,&oldTexId);
+	args.glFuncs->glBindTexture(GL_TEXTURE_2D,oldTexId);
+	args.glFuncs->glTexImage2D(GL_TEXTURE_2D,0,GL_R8,newimg.width(),newimg.height(),0,GL_RED,GL_UNSIGNED_BYTE, nullptr);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	for(int y = 0; y < source.height(); ++y) {
+		glTexSubImage2D(GL_TEXTURE_2D,0,0,y,source.width(),1,GL_RED,GL_UNSIGNED_BYTE,source.scanLine(y));
+	}
+	args.glFuncs->glGenTextures(1,&newTexId);
+	args.glFuncs->glBindTexture(GL_TEXTURE_2D,newTexId);
+	args.glFuncs->glTexImage2D(GL_TEXTURE_2D,0,GL_R8,newimg.width(),newimg.height(),0,GL_RED,GL_UNSIGNED_BYTE, nullptr);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	UniformForCompute uniform;
+	uniform.width = args.samples_to_check_x;
+	uniform.height = args.samples_to_check_y;
+	args.glFuncs->glGenBuffers(1,&uniformBuffer);
+	args.glFuncs->glBindBuffer(GL_UNIFORM_BUFFER,uniformBuffer);
+	args.glFuncs->glBufferData(GL_UNIFORM_BUFFER,sizeof(UniformForCompute),&uniform,  GL_STATIC_DRAW);
+	args.glFuncs->glUseProgram(args.glShader->programId());
+	int fontUniform = args.glShader->uniformLocation("fontTexture");
+	int sdfUniform = args.glShader->uniformLocation("sdfTexture");
+	int dimensionsUniform = args.glShader->uniformLocation("Dimensions");
+	args.extraFuncs->glBindImageTexture(0, oldTexId, 0, false, 0, GL_READ_ONLY, GL_R8 );
+	args.glFuncs->glUniform1i(fontUniform,0);
+	args.extraFuncs->glBindImageTexture(1, newTexId, 0, false, 0, GL_WRITE_ONLY, GL_R8 );
+	args.glFuncs->glUniform1i(sdfUniform,1);
+	args.extraFuncs->glBindBufferBase(GL_UNIFORM_BUFFER, 2, uniformBuffer);
+	args.extraFuncs->glUniformBlockBinding(args.glShader->programId(), dimensionsUniform, 2);
+	args.extraFuncs->glDispatchCompute(newimg.width(),newimg.height(),1);
+	args.extraFuncs->glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+	args.glFuncs->glDeleteBuffers(1,&uniformBuffer);
+	/*
+	texture.bindAsImage(unit,bindingType);
+	glUniform1i(bindingPoint, unit);
+*/
+	QByteArray pixelData(newimg.width() * newimg.height(), Qt::Uninitialized);
+	args.glFuncs->glBindTexture(GL_TEXTURE_2D,newTexId);
+	glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_BYTE, pixelData.data() );
+	args.glFuncs->glDeleteTextures(1,&oldTexId);
+	args.glFuncs->glDeleteTextures(1,&newTexId);
+	for(int y = 0; y < newimg.height(); ++y) {
+		uchar* scanline = newimg.scanLine(y);
+		const char* buffptr = &pixelData[y*newimg.width()];
+		std::memcpy(scanline,buffptr,newimg.width());
+	}
+	return newimg;
+}
+
 QImage producePaddedVariant(const unsigned char* glyph, unsigned padding, unsigned width_org, unsigned height_org, unsigned width_padded, unsigned height_padded) {
 	QImage img(width_padded,height_padded,QImage::Format_Grayscale8);
 	img.fill(0);
@@ -304,11 +367,6 @@ QBitArray producePaddedVariant1bit(const unsigned char* glyph, unsigned padding,
 	}
 	return newBits;
 }
-
-struct STD140 UniformForCompute {
-	int32_t width, height;
-	int32_t padding[2];
-};
 
 void StoredCharacter::fromFreeTypeGlyph(FT_GlyphSlot glyphSlot, const SDFGenerationArguments& args)
 {
@@ -335,64 +393,9 @@ void StoredCharacter::fromFreeTypeGlyph(FT_GlyphSlot glyphSlot, const SDFGenerat
 			break;
 		}
 		case OPENGL_COMPUTE: {
-			glPixelStorei( GL_PACK_ALIGNMENT, 1);
-			glPixelStorei(  GL_UNPACK_ALIGNMENT, 1);
-			/*QOpenGLTexture tex(producePaddedVariant(glyphSlot->bitmap.buffer, padding, width_org, height_org, width_padded, height_padded)
-								   .scaled(args.intendedSize,args.intendedSize,Qt::AspectRatioMode::IgnoreAspectRatio,Qt::TransformationMode::SmoothTransformation),
-							   QOpenGLTexture::DontGenerateMipMaps);
-			tex.setMagnificationFilter(QOpenGLTexture::Filter::Nearest);
-			tex.setMinificationFilter(QOpenGLTexture::Filter::Nearest);*/
 			QImage oldImg = producePaddedVariant(glyphSlot->bitmap.buffer, padding, width_org, height_org, width_padded, height_padded)
-								.scaled(args.intendedSize,args.intendedSize,Qt::AspectRatioMode::IgnoreAspectRatio,Qt::TransformationMode::SmoothTransformation);
-			QImage newimg(oldImg.width(), oldImg.height(), QImage::Format_Grayscale8);
-			GLuint oldTexId, newTexId, uniformBuffer;
-			args.glFuncs->glGenTextures(1,&oldTexId);
-			args.glFuncs->glBindTexture(GL_TEXTURE_2D,oldTexId);
-			args.glFuncs->glTexImage2D(GL_TEXTURE_2D,0,GL_R8,newimg.width(),newimg.height(),0,GL_RED,GL_UNSIGNED_BYTE, nullptr);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-			for(int y = 0; y < oldImg.height(); ++y) {
-				glTexSubImage2D(GL_TEXTURE_2D,0,0,y,oldImg.width(),1,GL_RED,GL_UNSIGNED_BYTE,oldImg.scanLine(y));
-			}
-			args.glFuncs->glGenTextures(1,&newTexId);
-			args.glFuncs->glBindTexture(GL_TEXTURE_2D,newTexId);
-			args.glFuncs->glTexImage2D(GL_TEXTURE_2D,0,GL_R8,newimg.width(),newimg.height(),0,GL_RED,GL_UNSIGNED_BYTE, nullptr);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-			UniformForCompute uniform;
-			uniform.width = args.samples_to_check_x;
-			uniform.height = args.samples_to_check_y;
-			args.glFuncs->glGenBuffers(1,&uniformBuffer);
-			args.glFuncs->glBindBuffer(GL_UNIFORM_BUFFER,uniformBuffer);
-			args.glFuncs->glBufferData(GL_UNIFORM_BUFFER,sizeof(UniformForCompute),&uniform,  GL_STATIC_DRAW);
-			args.glFuncs->glUseProgram(args.glShader->programId());
-			int fontUniform = args.glShader->uniformLocation("fontTexture");
-			int sdfUniform = args.glShader->uniformLocation("sdfTexture");
-			int dimensionsUniform = args.glShader->uniformLocation("Dimensions");
-			args.extraFuncs->glBindImageTexture(0, oldTexId, 0, false, 0, GL_READ_ONLY, GL_R8 );
-			args.glFuncs->glUniform1i(fontUniform,0);
-			args.extraFuncs->glBindImageTexture(1, newTexId, 0, false, 0, GL_WRITE_ONLY, GL_R8 );
-			args.glFuncs->glUniform1i(sdfUniform,1);
-			args.extraFuncs->glBindBufferBase(GL_UNIFORM_BUFFER, 2, uniformBuffer);
-			args.extraFuncs->glUniformBlockBinding(args.glShader->programId(), dimensionsUniform, 2);
-			args.extraFuncs->glDispatchCompute(newimg.width(),newimg.height(),1);
-			args.extraFuncs->glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-			args.glFuncs->glDeleteBuffers(1,&uniformBuffer);
-/*
-	texture.bindAsImage(unit,bindingType);
-	glUniform1i(bindingPoint, unit);
-*/
-			QByteArray pixelData(newimg.width() * newimg.height(), Qt::Uninitialized);
-			args.glFuncs->glBindTexture(GL_TEXTURE_2D,newTexId);
-			glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_BYTE, pixelData.data() );
-			args.glFuncs->glDeleteTextures(1,&oldTexId);
-			args.glFuncs->glDeleteTextures(1,&newTexId);
-			for(int y = 0; y < newimg.height(); ++y) {
-				uchar* scanline = newimg.scanLine(y);
-				const char* buffptr = &pixelData[y*newimg.width()];
-				std::memcpy(scanline,buffptr,newimg.width());
-			}
-			img = std::move(newimg);
+			.scaled(args.intendedSize,args.intendedSize,Qt::AspectRatioMode::IgnoreAspectRatio,Qt::TransformationMode::SmoothTransformation);
+			img = produceSdfGL(oldImg,oldImg.width(),oldImg.height(),args);
 			break;
 		}
 		case OPENCL: {
