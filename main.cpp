@@ -8,6 +8,11 @@ int main(int argc, char *argv[])
 {
 	auto args = parseArguments(argc,argv);
 	if(args.contains(QStringLiteral("nogui"))) {
+		QTextStream strm(stdout);
+		for(auto it = std::begin(args); it != std::end(args); ++it) {
+			strm << it.key() << ' ' << it.value().toString() << '\n';
+		}
+		strm.flush();
 		processFonts(args);
 		return 0;
 	} else {

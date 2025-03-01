@@ -6,6 +6,9 @@
 #include <QCborArray>
 #include <QCborValue>
 #include <QByteArray>
+#include <QOpenGLFunctions>
+#include <QOffscreenSurface>
+#include <memory>
 
 enum SDfGenerationMode {
 	SOFTWARE,
@@ -25,6 +28,14 @@ struct SDFGenerationArguments {
 	SDfGenerationMode mode = SOFTWARE;
 	SDFType type = SDF;
 	DistanceType distType = Manhattan;
+	unsigned intendedSize;
+	unsigned padding;
+	unsigned samples_to_check_x;
+	unsigned samples_to_check_y;
+	QOpenGLFunctions* glFuncs;
+	QOpenGLExtraFunctions* extraFuncs;
+	std::unique_ptr<QOpenGLContext> glContext;
+	std::unique_ptr<QOffscreenSurface> glSurface;
 	void fromArgs(const QVariantMap& args);
 };
 

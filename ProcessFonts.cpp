@@ -17,22 +17,19 @@
 #include <iostream>
 
 #ifdef HIRES
-const unsigned intendedSize = 4096;
-const unsigned padding = 300;
-const unsigned max_samples_to_check = 128;
-const unsigned half_samples_to_check = max_samples_to_check / 2;
-const unsigned to_scale = intendedSize - padding;
+const unsigned INTENDED_SIZE = 4096;
+const unsigned PADDING = 300;
 #else
-const unsigned intendedSize = 1024;
-const unsigned padding = 100;
-const unsigned max_samples_to_check = 64;
-const unsigned half_samples_to_check = max_samples_to_check / 2;
-const unsigned to_scale = intendedSize - padding;
+const unsigned INTENDED_SIZE = 1024;
+const unsigned PADDING = 100;
 #endif
 
 
 void processFonts(const QVariantMap& args)
 {
+	SDFGenerationArguments args2;
+	args2.fromArgs(args);
+	unsigned to_scale = args2.intendedSize - args2.padding;
 	int validGylph = 0;
 	FT_Library library;
 	auto error = FT_Init_FreeType( &library );
@@ -62,20 +59,48 @@ void processFonts(const QVariantMap& args)
 	if ( error ) {
 		throw std::runtime_error("Failed to set transform.");
 	}
-	auto minChar = args.value(QStringLiteral("minCharcode"),0).toUInt();
-	auto maxChar = args.value(QStringLiteral("minCharcode"),0xE007F).toUInt();
+	auto minChar = args.value(QStringLiteral("mincharcode"),0).toUInt();
+	auto maxChar = args.value(QStringLiteral("mincharcode"),0xE007F).toUInt();
+	switch(args2.mode) {
+		case SOFTWARE: break;
+		case OPENGL_COMPUTE: {
+			QSurfaceFormat fmt;
+			fmt.setDepthBufferSize(24);
+			if (QOpenGLContext::openGLModuleType() == QOpenGLContext::LibGL) {
+				qDebug("Requesting OpenGL 4.3 core context");
+				fmt.setVersion(4, 3);
+				fmt.setProfile(QSurfaceFormat::CoreProfile);
+			} else {
+				qDebug("Requesting OpenGL ES 3.2 context");
+				fmt.setVersion(3, 2);
+			}
+			QSurfaceFormat::setDefaultFormat(fmt);
+			args2.glContext = std::make_unique<QOpenGLContext>();
+			args2.glContext->setFormat(fmt);
+			args2.glSurface = std::make_unique<QOffscreenSurface>();
+			args2.glSurface->create();
+			args2.glContext->makeCurrent(args2.glSurface.get());
+			args2.glFuncs = args2.glContext->functions();
+			args2.extraFuncs = args2.glContext->extraFunctions();
+			break;
+		}
+		case OPENCL: {
+			break;
+		}
+		default: break;
+	}
 	for(uint32_t charcode = minChar; charcode < maxChar; ++charcode) {
 		auto glyph_index = FT_Get_Char_Index( face, charcode );
 		if(glyph_index) {
 			++validGylph;
 			error = FT_Load_Glyph(face,glyph_index,FT_LOAD_NO_BITMAP);
 			if ( error ) throw std::runtime_error("Failed to load glyph.");
-			SDFGenerationArguments args2;
-			args2.fromArgs(args);
 			StoredCharacter strChar;
 			strChar.fromFreeTypeGlyph(face->glyph, args2);
 		}
 	}
+	FT_Done_Face(face);
+	FT_Done_FreeType( library );
 	QTextStream strm(stdout);
 	strm << validGylph << '\n';
 }
@@ -145,13 +170,16 @@ struct TmpStoredDist {
 	bool isInside;
 };
 
-QImage produceSdf(const QBitArray& source, unsigned width, unsigned height, const SDFGenerationArguments& args) {
+QImage produceSdfSoft(const QBitArray& source, unsigned width, unsigned height, const SDFGenerationArguments& args) {
 	QImage sdf(width,height,QImage::Format_Grayscale8);
 	//std::vector<float> tmpFloat(with * height);
 	//double maxDist = sqrt(static_cast<double>(source.width()) * static_cast<double>(source.height()));
+	const unsigned half_samples_to_check_x = args.samples_to_check_x ? args.samples_to_check_x / 2 : width / 2 ;
+	const unsigned half_samples_to_check_y = args.samples_to_check_y ? args.samples_to_check_y / 2 : height / 2 ;
+
 	const float maxDist = (args.distType == DistanceType::Eucledian)
-							   ? (half_samples_to_check * std::sqrt(2.0))
-							   : static_cast<float>(max_samples_to_check);
+							  ? (std::sqrt(static_cast<float>(half_samples_to_check_x) * static_cast<float>(half_samples_to_check_y)))
+							   : static_cast<float>(half_samples_to_check_x+half_samples_to_check_y);
 
 	const auto distanceCalculator = (args.distType == DistanceType::Eucledian)
 										?
@@ -165,11 +193,11 @@ QImage produceSdf(const QBitArray& source, unsigned width, unsigned height, cons
 
 	std::vector<TmpStoredDist> storedDists(width * height);
 
-	auto calculateSdfForPixel = [&source,&distanceCalculator,maxDist,width,height](unsigned x, unsigned y, bool isInside) {
-		const unsigned min_offset_x = static_cast<unsigned>(std::max( static_cast<int>(x)-static_cast<int>(half_samples_to_check), 0 ));
-		const unsigned max_offset_x = static_cast<unsigned>(std::min( static_cast<int>(x)+static_cast<int>(half_samples_to_check), static_cast<int>(width) ));
-		const unsigned min_offset_y = static_cast<unsigned>(std::max( static_cast<int>(y)-static_cast<int>(half_samples_to_check), 0 ));
-		const unsigned max_offset_y = static_cast<unsigned>(std::min( static_cast<int>(y)+static_cast<int>(half_samples_to_check), static_cast<int>(height) ));
+	auto calculateSdfForPixel = [&source,&distanceCalculator,maxDist,half_samples_to_check_x,half_samples_to_check_y,width,height](unsigned x, unsigned y, bool isInside) {
+		const unsigned min_offset_x = static_cast<unsigned>(std::max( static_cast<int>(x)-static_cast<int>(half_samples_to_check_x), 0 ));
+		const unsigned max_offset_x = static_cast<unsigned>(std::min( static_cast<int>(x)+static_cast<int>(half_samples_to_check_x), static_cast<int>(width) ));
+		const unsigned min_offset_y = static_cast<unsigned>(std::max( static_cast<int>(y)-static_cast<int>(half_samples_to_check_y), 0 ));
+		const unsigned max_offset_y = static_cast<unsigned>(std::min( static_cast<int>(y)+static_cast<int>(half_samples_to_check_y), static_cast<int>(height) ));
 		float minDistance = maxDist;
 		for(unsigned offset_y = min_offset_y; offset_y < max_offset_y; ++offset_y ) {
 			const unsigned row_start = offset_y * width;
@@ -185,9 +213,9 @@ QImage produceSdf(const QBitArray& source, unsigned width, unsigned height, cons
 	};
 	#pragma omp parallel for collapse(2)
 	for(int y = 0; y < height;++y) {
-		TmpStoredDist* out_row_start = &storedDists[y * width];
-		const unsigned in_row_start = y * width;
 		for(int x = 0; x < width; ++x) {
+			TmpStoredDist* out_row_start = &storedDists[y * width];
+			const unsigned in_row_start = y * width;
 			const bool isInside = source.testBit(in_row_start+x);
 			out_row_start[x].isInside = isInside;
 			out_row_start[x].f = calculateSdfForPixel(x,y,isInside);
@@ -226,38 +254,64 @@ QImage produceSdf(const QBitArray& source, unsigned width, unsigned height, cons
 	return sdf;
 }
 
+QImage producePaddedVariant(const unsigned char* glyph, unsigned padding, unsigned width_org, unsigned height_org, unsigned width_padded, unsigned height_padded) {
+	QImage img(width_padded,height_padded,QImage::Format_Grayscale8);
+	img.fill(0);
+	for(unsigned y = padding; y < height_padded-padding;++y) {
+		uchar* row = img.scanLine(y);
+		const uchar* inRow = &glyph[(y-padding)*width_org];
+		memcpy(&row[padding],inRow,width_org);
+	}
+	return img;
+}
+QBitArray producePaddedVariant1bit(const unsigned char* glyph, unsigned padding, unsigned width_org, unsigned height_org, unsigned width_padded, unsigned height_padded) {
+	QBitArray newBits(width_padded * height_padded,false);
+	for(unsigned y = padding; y < height_padded-padding; ++y) {
+		const unsigned row_start = y*width_padded;
+		const uchar* inRow = &glyph[(y-padding)*width_org];
+		for(unsigned x = padding; x < width_padded-padding;++x) {
+			const unsigned row_i = row_start + x;
+			newBits.setBit(row_i,inRow[x-padding] >= 128);
+		}
+	}
+	return newBits;
+}
+
 void StoredCharacter::fromFreeTypeGlyph(FT_GlyphSlot glyphSlot, const SDFGenerationArguments& args)
 {
 	auto error = FT_Render_Glyph( glyphSlot, FT_RENDER_MODE_NORMAL);
 	if ( error ) throw std::runtime_error("Failed to render glyph.");
 	if(glyphSlot->bitmap.rows <= 1 || glyphSlot->bitmap.width <= 1) return;
 
+	const unsigned padding = args.padding;
 	const unsigned width_org = glyphSlot->bitmap.width;
 	const unsigned height_org = glyphSlot->bitmap.rows;
-	const unsigned width_padded = width_org + (padding*2);
-	const unsigned height_padded = height_org + (padding*2);
+	const unsigned width_padded = width_org + (args.padding*2);
+	const unsigned height_padded = height_org + (args.padding*2);
 
 	QTextStream strm(stdout);
 	strm << "Width: " << glyphSlot->bitmap.width << '\n';
 	strm << "Rows: " << glyphSlot->bitmap.rows << '\n';
-
-	//QByteArray tmpArrA = QByteArray::fromRawData(reinterpret_cast<char*>(glyphSlot->bitmap.buffer),glyphSlot->bitmap.width * glyphSlot->bitmap.rows);
-	QBitArray newBits(width_padded * height_padded,false);
-	for(unsigned y = padding; y < height_padded-padding; ++y) {
-		const unsigned row_start = y*width_padded;
-		const unsigned row_start_org = (y-padding)*width_org;
-		const uchar* inRow = &glyphSlot->bitmap.buffer[(y-padding)*width_org];
-		for(unsigned x = padding; x < width_padded-padding;++x) {
-			const unsigned row_i = row_start + x;
-			const unsigned row_i_og = row_start_org + x - padding;
-			newBits.setBit(row_i,inRow[x-padding] >= 128);
-		}
-	}
-
-	QImage img = produceSdf(newBits, width_padded, height_padded, args);
-	//img = img.scaled(32,32,Qt::IgnoreAspectRatio,Qt::SmoothTransformation);
 	QByteArray tmpArr;
 	QBuffer buff(&tmpArr);
+	QImage img;
+	switch(args.mode) {
+		case SOFTWARE: {
+			QBitArray newBits = producePaddedVariant1bit(glyphSlot->bitmap.buffer, padding, width_org, height_org, width_padded, height_padded);
+			img = produceSdfSoft(newBits, width_padded, height_padded, args);
+			break;
+		}
+		case OPENGL_COMPUTE: {
+			throw std::runtime_error("Unsupported mode!");
+		}
+		case OPENCL: {
+			throw std::runtime_error("Unsupported mode!");
+		}
+		default: {
+			throw std::runtime_error("Unsupported mode!");
+		}
+	}
+	//img = img.scaled(32,32,Qt::IgnoreAspectRatio,Qt::SmoothTransformation);
 	buff.open(QIODevice::WriteOnly);
 	img.save(&buff,"PNG",-1);
 	buff.close();
@@ -281,8 +335,19 @@ const QString msdfa_mode_str = QStringLiteral("MSDFA");
 const QString manhattan_mode_str = QStringLiteral("Manhattan");
 const QString eucledian_mode_str = QStringLiteral("Eucledian");
 
+/*
+	unsigned intendedSize;
+	unsigned padding;
+	unsigned samples_to_check_x;
+	unsigned samples_to_check_y;
+*/
+
 void SDFGenerationArguments::fromArgs(const QVariantMap& args)
 {
+	this->intendedSize = args.value(QStringLiteral("intendedsize"),INTENDED_SIZE).toUInt();
+	this->padding = args.value(QStringLiteral("padding"),PADDING).toUInt();
+	this->samples_to_check_x = args.value(QStringLiteral("samplestocheckx"),0).toUInt();
+	this->samples_to_check_y = args.value(QStringLiteral("samplestochecky"),0).toUInt();
 	// Mode
 	{
 		QVariant genMod = args.value(mode_str,software_mode_str);
