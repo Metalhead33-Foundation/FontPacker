@@ -141,7 +141,7 @@ public:
 };
 
 struct TmpStoredDist {
-	double f;
+	float f;
 	bool isInside;
 };
 
@@ -149,18 +149,18 @@ QImage produceSdf(const QBitArray& source, unsigned width, unsigned height, cons
 	QImage sdf(width,height,QImage::Format_Grayscale8);
 	//std::vector<float> tmpFloat(with * height);
 	//double maxDist = sqrt(static_cast<double>(source.width()) * static_cast<double>(source.height()));
-	const double maxDist = (args.distType == DistanceType::Eucledian)
+	const float maxDist = (args.distType == DistanceType::Eucledian)
 							   ? (half_samples_to_check * std::sqrt(2.0))
-							   : static_cast<double>(max_samples_to_check);
+							   : static_cast<float>(max_samples_to_check);
 
 	const auto distanceCalculator = (args.distType == DistanceType::Eucledian)
 										?
 										( [](const glm::ivec2& a, const glm::ivec2& b) {
-											  return glm::distance(glm::dvec2(a),glm::dvec2(b));
+											  return glm::distance(glm::fvec2(a),glm::fvec2(b));
 										} )
 										:
 										( [](const glm::ivec2& a, const glm::ivec2& b) {
-											  return static_cast<double>(std::abs(a.x - b.x) + std::abs(a.y - b.y));
+											  return static_cast<float>(std::abs(a.x - b.x) + std::abs(a.y - b.y));
 										  } );
 
 	std::vector<TmpStoredDist> storedDists(width * height);
@@ -170,13 +170,13 @@ QImage produceSdf(const QBitArray& source, unsigned width, unsigned height, cons
 		const unsigned max_offset_x = static_cast<unsigned>(std::min( static_cast<int>(x)+static_cast<int>(half_samples_to_check), static_cast<int>(width) ));
 		const unsigned min_offset_y = static_cast<unsigned>(std::max( static_cast<int>(y)-static_cast<int>(half_samples_to_check), 0 ));
 		const unsigned max_offset_y = static_cast<unsigned>(std::min( static_cast<int>(y)+static_cast<int>(half_samples_to_check), static_cast<int>(height) ));
-		double minDistance = maxDist;
+		float minDistance = maxDist;
 		for(unsigned offset_y = min_offset_y; offset_y < max_offset_y; ++offset_y ) {
 			const unsigned row_start = offset_y * width;
 			for(unsigned offset_x = min_offset_x; offset_x < max_offset_x; ++offset_x ) {
 				bool isEdge = source.testBit(row_start+offset_x) != isInside;
 				if(isEdge) {
-					double dist = distanceCalculator(glm::ivec2(x,y),glm::ivec2(offset_x,offset_y));
+					float dist = distanceCalculator(glm::ivec2(x,y),glm::ivec2(offset_x,offset_y));
 					if(dist <= minDistance) minDistance = dist;
 				}
 			}
@@ -194,8 +194,8 @@ QImage produceSdf(const QBitArray& source, unsigned width, unsigned height, cons
 		}
 	}
 
-	double maxDistIn = 0.0;
-	double maxDistOut = 0.0;
+	float maxDistIn = std::numeric_limits<float>::epsilon();
+	float maxDistOut = std::numeric_limits<float>::epsilon();
 	for(const auto& it : storedDists) {
 		if(it.isInside) {
 			maxDistIn = std::max(maxDistIn,it.f);
@@ -203,23 +203,24 @@ QImage produceSdf(const QBitArray& source, unsigned width, unsigned height, cons
 			maxDistOut = std::max(maxDistOut,it.f);
 		}
 	}
-	std::cout << maxDistIn << ' ' << maxDistOut << '\n';
+	// Add a small epsilon to avoid division by zero
 	for(auto& it : storedDists) {
 		if(it.isInside) {
 			it.f /= maxDistIn;
+			it.f = 0.5f + (it.f * 0.5f);
 		} else {
 			it.f /= maxDistOut;
+			it.f = 0.5f - (it.f * 0.5f);
 		}
 	}
 
-	#pragma omp parallel for collapse(2)
 	for(int y = 0; y < height;++y) {
 		uchar* row = sdf.scanLine(y);
 		const TmpStoredDist* in_row_start = &storedDists[y * width];
 		for(int x = 0; x < width; ++x) {
 			const TmpStoredDist& in = in_row_start[x];
-			double sdfValue = (in.isInside ? 0.5 + (in.f / 2.0) : 0.5 - (in.f / 2.0));
-			row[x] = static_cast<uint8_t>(sdfValue * 255.0);
+			//float sdfValue = (in.isInside ? 0.5f + (in.f / 2.0f) : 0.5f - (in.f / 2.0f));
+			row[x] = static_cast<uint8_t>(in.f * 255.0f);
 		}
 	}
 	return sdf;
