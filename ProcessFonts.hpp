@@ -7,6 +7,7 @@
 #include <QCborValue>
 #include <QByteArray>
 #include <QOpenGLFunctions>
+#include <QOpenGLShaderProgram>
 #include <QOffscreenSurface>
 #include <memory>
 
@@ -36,6 +37,7 @@ struct SDFGenerationArguments {
 	QOpenGLExtraFunctions* extraFuncs;
 	std::unique_ptr<QOpenGLContext> glContext;
 	std::unique_ptr<QOffscreenSurface> glSurface;
+	std::unique_ptr<QOpenGLShaderProgram> glShader;
 	void fromArgs(const QVariantMap& args);
 };
 

@@ -13,7 +13,9 @@
 #include <vector>
 #include <cmath>
 #include <QBitArray>
+#include <QOpenGLTexture>
 #include <glm/glm.hpp>
+#include <QOpenGLExtraFunctions>
 #include <iostream>
 
 #ifdef HIRES
@@ -27,6 +29,7 @@ const unsigned PADDING = 100;
 
 void processFonts(const QVariantMap& args)
 {
+	QTextStream errStrm(stderr);
 	SDFGenerationArguments args2;
 	args2.fromArgs(args);
 	unsigned to_scale = args2.intendedSize - args2.padding;
@@ -77,11 +80,28 @@ void processFonts(const QVariantMap& args)
 			QSurfaceFormat::setDefaultFormat(fmt);
 			args2.glContext = std::make_unique<QOpenGLContext>();
 			args2.glContext->setFormat(fmt);
+			if(!args2.glContext->create()) throw std::runtime_error("Failed to create OpenGL context!");
 			args2.glSurface = std::make_unique<QOffscreenSurface>();
 			args2.glSurface->create();
-			args2.glContext->makeCurrent(args2.glSurface.get());
+			if(!args2.glContext->makeCurrent(args2.glSurface.get())) throw std::runtime_error("Failed to make the context current!");
 			args2.glFuncs = args2.glContext->functions();
 			args2.extraFuncs = args2.glContext->extraFunctions();
+			args2.glShader = std::make_unique<QOpenGLShaderProgram>();
+			if(!args2.glShader->create()) throw std::runtime_error("Failed to create shader!");
+			QFile res(":/shader1.glsl");
+			if(res.open(QFile::ReadOnly)) {
+				QByteArray shdrArr = res.readAll();
+				if(!args2.glShader->addCacheableShaderFromSourceCode(QOpenGLShader::Compute,shdrArr)) {
+					errStrm << args2.glShader->log() << '\n';
+					errStrm.flush();
+					throw std::runtime_error("Failed to add shader!");
+				}
+				if(!args2.glShader->link()) {
+					errStrm << args2.glShader->log() << '\n';
+					errStrm.flush();
+					throw std::runtime_error("Failed to compile OpenGL shader!");
+				}
+			}
 			break;
 		}
 		case OPENCL: {
@@ -302,7 +322,38 @@ void StoredCharacter::fromFreeTypeGlyph(FT_GlyphSlot glyphSlot, const SDFGenerat
 			break;
 		}
 		case OPENGL_COMPUTE: {
-			throw std::runtime_error("Unsupported mode!");
+			glPixelStorei( GL_PACK_ALIGNMENT, 1);
+			glPixelStorei(  GL_UNPACK_ALIGNMENT, 1);
+			QOpenGLTexture tex(producePaddedVariant(glyphSlot->bitmap.buffer, padding, width_org, height_org, width_padded, height_padded)
+								   .scaled(args.intendedSize,args.intendedSize,Qt::AspectRatioMode::IgnoreAspectRatio,Qt::TransformationMode::SmoothTransformation),
+							   QOpenGLTexture::DontGenerateMipMaps);
+			QImage newimg(tex.width(), tex.height(), QImage::Format_Grayscale8);
+			newimg.fill(0);
+			std::cout << tex.textureId() << ' ' << tex.width() << ' ' << tex.height() << std::endl;
+			tex.release();
+			QOpenGLTexture outTex(newimg,QOpenGLTexture::DontGenerateMipMaps);
+			glBindTexture(GL_TEXTURE_2D, outTex.textureId());
+			std::cout << outTex.textureId() << ' ' << outTex.width() << ' ' << outTex.height() << std::endl;
+			args.glFuncs->glUseProgram(args.glShader->programId());
+			int imageUniform = args.glShader->uniformLocation("outputImage");
+			args.extraFuncs->glBindImageTexture(1, outTex.textureId(), 0, false, 0, GL_WRITE_ONLY, GL_R8 );
+			args.glFuncs->glUniform1i(imageUniform,1);
+			args.extraFuncs->glDispatchCompute(outTex.width(),outTex.height(),1);
+			args.extraFuncs->glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+/*
+	texture.bindAsImage(unit,bindingType);
+	glUniform1i(bindingPoint, unit);
+*/
+			QByteArray pixelData(outTex.width() * outTex.height(), Qt::Uninitialized);
+			glBindTexture(GL_TEXTURE_2D,outTex.textureId());
+			glGetTexImage(outTex.target(), 0, outTex.format(), QOpenGLTexture::PixelType::UInt8, pixelData.data() );
+			for(int y = 0; y < newimg.height(); ++y) {
+				uchar* scanline = newimg.scanLine(y);
+				const char* buffptr = &pixelData[y*newimg.width()];
+				std::memcpy(scanline,buffptr,newimg.width());
+			}
+			img = std::move(newimg);
+			break;
 		}
 		case OPENCL: {
 			throw std::runtime_error("Unsupported mode!");
@@ -313,7 +364,7 @@ void StoredCharacter::fromFreeTypeGlyph(FT_GlyphSlot glyphSlot, const SDFGenerat
 	}
 	//img = img.scaled(32,32,Qt::IgnoreAspectRatio,Qt::SmoothTransformation);
 	buff.open(QIODevice::WriteOnly);
-	img.save(&buff,"PNG",-1);
+	if(!img.save(&buff,"PNG",-1)) throw std::runtime_error("Failed to save image!");
 	buff.close();
 	QFile f(QStringLiteral("/tmp/fonttmp/%1.png").arg(glyphSlot->glyph_index));
 	if(f.open(QFile::WriteOnly)) {

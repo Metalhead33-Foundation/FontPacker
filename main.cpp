@@ -1,4 +1,4 @@
-#include <QCoreApplication>
+#include <QApplication>
 #include <QVariant>
 #include <QTextStream>
 #include "ProcessFonts.hpp"
@@ -6,6 +6,7 @@
 QVariantMap parseArguments(int argc, char *argv[]);
 int main(int argc, char *argv[])
 {
+	QApplication a(argc, argv);
 	auto args = parseArguments(argc,argv);
 	if(args.contains(QStringLiteral("nogui"))) {
 		QTextStream strm(stdout);
@@ -16,7 +17,6 @@ int main(int argc, char *argv[])
 		processFonts(args);
 		return 0;
 	} else {
-		QCoreApplication a(argc, argv);
 
 		// Set up code that uses the Qt event loop here.
 		// Call a.quit() or a.exit() to quit the application.

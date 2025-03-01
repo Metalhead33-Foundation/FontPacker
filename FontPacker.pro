@@ -1,4 +1,4 @@
-QT += core gui opengl
+QT += core gui opengl widgets
 
 CONFIG += c++2a cmdline
 
@@ -25,7 +25,11 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 DISTFILES += \
     .gitignore \
     LICENSE \
-    README.md
+    README.md \
+    shader1.glsl
 
 HEADERS += \
     ProcessFonts.hpp
+
+RESOURCES += \
+    resources.qrc
