@@ -6,10 +6,11 @@ layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout (binding = 0, r8) readonly uniform image2D fontTexture;
 
 // Output SDF texture
-layout (binding = 1, r8) writeonly uniform image2D sdfTexture;
+layout (binding = 1, r32f) writeonly uniform image2D rawSdfTexture;
+layout (binding = 2, r8) writeonly uniform image2D isInsideTex;
 
 // Texture dimensions
-layout (binding = 2, std140) uniform Dimensions {
+layout (binding = 3, std140) uniform Dimensions {
     int intendedSampleWidth;
     int intendedSampleHeight;
 };
@@ -37,7 +38,7 @@ float calculateDistance(ivec2 threadId, ivec2 texSize, float maxDistance, bool i
 
 void main() {
     ivec2 threadId = ivec2(gl_GlobalInvocationID.xy);
-    ivec2 imageDimensions = imageSize(sdfTexture);
+    ivec2 imageDimensions = imageSize(rawSdfTexture);
     if (threadId.x >= imageDimensions.x || threadId.y >= imageDimensions.y) {
 	return;
     }
@@ -48,8 +49,8 @@ void main() {
     float sdfValue = calculateDistance(threadId, imageDimensions, maxDistance, isInside);
 
     // Normalize sdfValue to [-0.5, 0.5] range and then to [0, 1]
-    sdfValue = 1.0 - (isInside ? 0.5 - (sdfValue / 2.0) : 0.5 + (sdfValue / 2.0));
 
     // Write the SDF value to the output texture
-    imageStore(sdfTexture, threadId, vec4(sdfValue, sdfValue, sdfValue, 1.0));
+    imageStore(rawSdfTexture, threadId, vec4(sdfValue, sdfValue, sdfValue, 1.0));
+    imageStore(isInsideTex, threadId, vec4(float(isInside), float(isInside), float(isInside), 1.0));
 }
