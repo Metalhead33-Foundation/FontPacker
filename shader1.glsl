@@ -1,23 +1,55 @@
 #version 430 core
+
 layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
-// Define the layout of the input image
-layout(r8, binding = 0) writeonly uniform image2D outputImage;
+
+// Input image texture
+layout (binding = 0, r8) readonly uniform image2D fontTexture;
+
+// Output SDF texture
+layout (binding = 1, r8) writeonly uniform image2D sdfTexture;
+
+// Texture dimensions
+layout (binding = 2, std140) uniform Dimensions {
+    int intendedSampleWidth;
+    int intendedSampleHeight;
+};
+
+#define MAX_SAMPLES_DIM 4
+
+// Function to calculate the distance to the nearest edge
+float calculateDistance(ivec2 threadId, ivec2 texSize, float maxDistance, bool isInside) {
+    float minDistance = maxDistance;
+    for (int offsetY = -intendedSampleWidth; offsetY <= intendedSampleWidth; ++offsetY) {
+	for (int offsetX = -intendedSampleHeight; offsetX <= intendedSampleHeight; ++offsetX) {
+	    ivec2 samplePos = clamp(threadId + ivec2(offsetX, offsetY), ivec2(0, 0), texSize - ivec2(1));
+	    float pointSample = imageLoad(fontTexture, samplePos).r;
+	    bool isEdge = (pointSample > 0.5) != isInside;
+	    if (isEdge) {
+		float dist = length(vec2(offsetX, offsetY));
+		if (dist < minDistance) {
+		    minDistance = dist;
+		}
+	    }
+	}
+    }
+    return minDistance / maxDistance;
+}
 
 void main() {
-    // Get the dimensions of the image
-    //ivec2 imageDimensions = imageSize(outputImage);
+    ivec2 threadId = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 imageDimensions = imageSize(sdfTexture);
+    if (threadId.x >= imageDimensions.x || threadId.y >= imageDimensions.y) {
+	return;
+    }
 
-    ivec2 imageDimensions = ivec2(1024,1024);
+    float pixel = imageLoad(fontTexture, threadId).r;
+    float maxDistance = length(vec2(intendedSampleWidth, intendedSampleHeight));
+    bool isInside = pixel > 0.5;
+    float sdfValue = calculateDistance(threadId, imageDimensions, maxDistance, isInside);
 
-    // Get the current pixel's coordinates
-    ivec2 pixelCoord = ivec2(gl_GlobalInvocationID.xy);
+    // Normalize sdfValue to [-0.5, 0.5] range and then to [0, 1]
+    sdfValue = 1.0 - (isInside ? 0.5 - (sdfValue / 2.0) : 0.5 + (sdfValue / 2.0));
 
-    // Normalize the pixel coordinates to the range [0.0, 1.0]
-    vec2 normalizedCoord = vec2(pixelCoord) / vec2(imageDimensions);
-
-    // Compute the greyscale value based on the x-coordinate
-    float greyscaleValue = normalizedCoord.x;
-
-    // Write the greyscale value to the texture
-    imageStore(outputImage, pixelCoord, vec4(greyscaleValue, greyscaleValue, greyscaleValue, 1.0));
+    // Write the SDF value to the output texture
+    imageStore(sdfTexture, threadId, vec4(sdfValue, sdfValue, sdfValue, 1.0));
 }
