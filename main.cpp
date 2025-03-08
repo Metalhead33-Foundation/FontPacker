@@ -1,6 +1,8 @@
 #include <QApplication>
 #include <QVariant>
 #include <QTextStream>
+#include <QFile>
+#include "ConstStrings.hpp"
 #include "ProcessFonts.hpp"
 
 QVariantMap parseArguments(int argc, char *argv[]);
@@ -14,7 +16,47 @@ int main(int argc, char *argv[])
 			strm << it.key() << ' ' << it.value().toString() << '\n';
 		}
 		strm.flush();
-		processFonts(args);
+		PreprocessedFontFace fontface;
+		if( args.contains( IN_FONT_KEY ) ) {
+			fontface.processFonts(args);
+		}
+		else if( args.contains( IN_BIN_KEY ) ) {
+			QFile fil(args.value(IN_BIN_KEY).toString());
+			if(fil.open(QFile::ReadOnly)) {
+				QDataStream binF(&fil);
+				fontface.fromData(binF);
+			}
+		}
+		else if( args.contains( IN_CBOR_KEY ) ) {
+			QFile fil(args.value(IN_CBOR_KEY).toString());
+			if(fil.open(QFile::ReadOnly)) {
+				QCborValue cborv = QCborValue::fromCbor(fil.readAll());
+				fil.close();
+				fontface.fromCbor(cborv.toMap());
+			}
+		}
+
+		if(args.contains( OUT_FONT_KEY )) {
+			fontface.outToFolder( args.value(OUT_FONT_KEY).toString() );
+		}
+		if(args.contains( OUT_BIN_KEY )) {
+			QFile fil(args.value(OUT_BIN_KEY).toString());
+			if(fil.open(QFile::WriteOnly)) {
+				QDataStream binF(&fil);
+				fontface.toData(binF);
+				fil.flush();
+				fil.close();
+			}
+		}
+		if(args.contains( OUT_CBOR_KEY )) {
+			QFile fil(args.value(OUT_CBOR_KEY).toString());
+			if(fil.open(QFile::WriteOnly)) {
+				QCborValue cbor = fontface.toCbor();
+				fil.write(cbor.toCbor());
+				fil.flush();
+				fil.close();
+			}
+		}
 		return 0;
 	} else {
 

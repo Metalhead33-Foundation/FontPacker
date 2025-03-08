@@ -1,0 +1,36 @@
+#include "ConstStrings.hpp"
+
+const QString VALID_KEY = QStringLiteral("valid");
+const QString WIDTH_KEY = QStringLiteral("width");
+const QString HEIGHT_KEY = QStringLiteral("height");
+const QString BEARING_X_KEY = QStringLiteral("bearing_x");
+const QString BEARING_Y_KEY = QStringLiteral("bearing_y");
+const QString ADVANCE_X_KEY = QStringLiteral("advance_x");
+const QString ADVANCE_Y_KEY = QStringLiteral("advance_y");
+const QString SDF_KEY = QStringLiteral("sdf");
+const QString MODE_KEY = QStringLiteral("mode");
+const QString TYPE_KEY = QStringLiteral("type");
+const QString DIST_KEY = QStringLiteral("dist");
+const QString SOFTWARE_MODE_KEY = QStringLiteral("Software");
+const QString OPENGL_MODE_KEY = QStringLiteral("OpenGL");
+const QString OPENCL_MODE_KEY = QStringLiteral("OpenCL");
+const QString SDF_MODE_KEY = QStringLiteral("SDF");
+const QString MSDFA_MODE_KEY = QStringLiteral("MSDFA");
+const QString MANHATTAN_MODE_KEY = QStringLiteral("Manhattan");
+const QString EUCLIDEAN_MODE_KEY = QStringLiteral("Euclidean");
+const QString INTERNAL_PROCESS_SIZE_KEY = QStringLiteral("internalprocesssize");
+const QString INTENDED_SIZE_KEY = QStringLiteral("intendedsize");
+const QString PADDING_KEY = QStringLiteral("padding");
+const QString SAMPLES_TO_CHECK_X_KEY = QStringLiteral("samplestocheckx");
+const QString SAMPLES_TO_CHECK_Y_KEY = QStringLiteral("samplestochecky");
+const QString CHAR_MIN_KEY = QStringLiteral("mincharcode");
+const QString CHAR_MAX_KEY = QStringLiteral("mincharcode");
+const QString IN_FONT_KEY = QStringLiteral("infont");
+const QString IN_BIN_KEY = QStringLiteral("inbin");
+const QString IN_CBOR_KEY = QStringLiteral("incbor");
+const QString OUT_FONT_KEY = QStringLiteral("outfont");
+const QString OUT_BIN_KEY = QStringLiteral("outbin");
+const QString OUT_CBOR_KEY = QStringLiteral("outcbor");
+const QString DEFAULT_FONT_PATH = QStringLiteral("/usr/share/fonts/truetype/arial.ttf");
+const QString BITMAP_SIZE_KEY = QStringLiteral("dimensions");
+const QString GLYPHS_KEY = QStringLiteral("glyphs");
