@@ -1,4 +1,5 @@
 #include "ProcessFonts.hpp"
+#include <harfbuzz/hb-ft.h>
 #include <stdexcept>
 #include <QTextStream>
 #include <ft2build.h>
@@ -35,6 +36,37 @@ const unsigned PADDING = 100;
 #endif
 const unsigned INTENDED_SIZE = 32;
 
+static double convert26_6ToDouble(int32_t fixedPointValue) {
+	// Extract the integer part by shifting right by 6 bits
+	int32_t integerPart = fixedPointValue >> 6;
+
+	// Extract the fractional part by masking the lower 6 bits
+	int32_t fractionalPart = fixedPointValue & 0x3F; // 0x3F is 00111111 in binary
+
+	// Convert the fractional part to a double
+	double fractionalValue = static_cast<double>(fractionalPart) / 64.0;
+
+	// Combine the integer and fractional parts
+	double result = static_cast<double>(integerPart) + fractionalValue;
+
+	return result;
+}
+static double convert16_16ToDouble(int32_t fixedPointValue) {
+	// Extract the integer part by shifting right by 16 bits
+	int32_t integerPart = fixedPointValue >> 16;
+
+	// Extract the fractional part by masking the lower 16 bits
+	int32_t fractionalPart = fixedPointValue & 0xFFFF;
+
+	// Convert the fractional part to a double
+	double fractionalValue = static_cast<double>(fractionalPart) / 65536.0;
+
+	// Combine the integer and fractional parts
+	double result = static_cast<double>(integerPart) + fractionalValue;
+
+	return result;
+}
+
 void PreprocessedFontFace::processFonts(const QVariantMap& args)
 {
 	SDFGenerationArguments args2;
@@ -45,6 +77,8 @@ void PreprocessedFontFace::processFonts(const QVariantMap& args)
 void PreprocessedFontFace::processFonts(SDFGenerationArguments& args)
 {
 	QTextStream errStrm(stderr);
+	this->type = args.type;
+	this->distType = args.distType;
 	this->bitmap_size = args.intendedSize;
 	this->bitmap_padding = args.padding;
 	unsigned to_scale = args.internalProcessSize - args.padding;
@@ -64,6 +98,8 @@ void PreprocessedFontFace::processFonts(SDFGenerationArguments& args)
 	{
 		throw std::runtime_error("Font file could not be read! Does it even exist?");
 	}
+	this->hasVert = FT_HAS_VERTICAL(face);
+	this->fontFamilyName = QString::fromUtf8(face->family_name);
 	error = FT_Set_Pixel_Sizes(face,to_scale,to_scale);
 	if ( error ) {
 		throw std::runtime_error("Failed to set character sizes.");
@@ -111,31 +147,68 @@ void PreprocessedFontFace::processFonts(SDFGenerationArguments& args)
 		}
 		default: break;
 	}
+	QMap<uint32_t,uint32_t> charcodeToGlyphIndex;
+	QMap<uint32_t,uint32_t> glyphIndexToCharCode;
 	for(uint32_t charcode = minChar; charcode < maxChar; ++charcode) {
 		auto glyph_index = FT_Get_Char_Index( face, charcode );
 		if(glyph_index) {
+			charcodeToGlyphIndex.insert(charcode,glyph_index);
+			glyphIndexToCharCode.insert(glyph_index,charcode);
 			error = FT_Load_Glyph(face,glyph_index,FT_LOAD_NO_BITMAP);
 			if ( error ) throw std::runtime_error("Failed to load glyph.");
 			StoredCharacter strdChr;
 			strdChr.fromFreeTypeGlyph(face->glyph, args);
-			storedCharacters.insert(glyph_index, strdChr);
+			storedCharacters.insert(charcode, strdChr);
 		}
 	}
+	if( FT_HAS_KERNING(face) )
+	{
+		FT_Vector kernVector;
+		for( auto it = std::begin(charcodeToGlyphIndex); it != std::end(charcodeToGlyphIndex); ++it) {
+			PerCharacterKerning tmpKern;
+			for( auto zt = std::begin(charcodeToGlyphIndex); zt != std::end(charcodeToGlyphIndex); ++zt) {
+				auto gotKerning = FT_Get_Kerning(face, it.value(), zt.value(), FT_KERNING_DEFAULT, &kernVector);
+				if(!gotKerning && (kernVector.x || kernVector.y)) {
+					Vec2f tmpVec;
+					tmpVec.first = convert16_16ToDouble(kernVector.x);
+					tmpVec.second = convert16_16ToDouble(kernVector.y);
+					tmpKern.insert(zt.key(),tmpVec);
+				}
+			}
+			if(tmpKern.size()) kerning.insert(it.key(),tmpKern);
+		}
+	}
+
 	FT_Done_Face(face);
 	FT_Done_FreeType( library );
 }
 
 void PreprocessedFontFace::toCbor(QCborMap& cbor) const
 {
+	cbor.insert(FONT_NAME_KEY,fontFamilyName);
 	cbor.insert(TYPE_KEY, static_cast<unsigned>(type));
 	cbor.insert(DIST_KEY, static_cast<unsigned>(distType));
 	cbor.insert(BITMAP_SIZE_KEY, bitmap_size);
+	cbor.insert(BITMAP_LOGICAL_SIZE_KEY, bitmap_logical_size);
 	cbor.insert(PADDING_KEY, bitmap_padding);
+	cbor.insert(HAS_VERT_KEY, hasVert);
 	QCborMap tmpMap;
 	for(auto it = std::begin(storedCharacters); it != std::end(storedCharacters); ++it) {
 		tmpMap.insert(it.key(),it.value().toCbor());
 	}
 	cbor.insert(GLYPHS_KEY, tmpMap);
+	QCborMap kerningMap;
+	for(auto it = std::begin(kerning) ; it != std::end(kerning) ; ++it ) {
+		QCborMap kerningMap2;
+		for(auto zt = std::begin(it.value()) ; zt != std::end(it.value()) ; ++zt ) {
+			QCborArray arr;
+			arr.push_back(zt.value().first);
+			arr.push_back(zt.value().second);
+			kerningMap2.insert(zt.key(),arr);
+		}
+		kerningMap.insert(it.key(),kerningMap2);
+	}
+	cbor.insert(KERNING_KEY, kerningMap);
 }
 
 QCborMap PreprocessedFontFace::toCbor() const
@@ -147,10 +220,13 @@ QCborMap PreprocessedFontFace::toCbor() const
 
 void PreprocessedFontFace::fromCbor(const QCborMap& cbor)
 {
+	this->fontFamilyName = cbor[FONT_NAME_KEY].toString();
 	this->type = static_cast<SDFType>(cbor[TYPE_KEY].toInteger());
 	this->distType = static_cast<DistanceType>(cbor[DIST_KEY].toInteger());
 	this->bitmap_size = cbor[BITMAP_SIZE_KEY].toInteger();
+	this->bitmap_logical_size = cbor[BITMAP_LOGICAL_SIZE_KEY].toInteger();
 	this->bitmap_padding = cbor[PADDING_KEY].toInteger();
+	this->hasVert = cbor[HAS_VERT_KEY].toBool();
 	QCborMap tmpMap = cbor[GLYPHS_KEY].toMap();
 	for(auto it = std::begin(tmpMap); it != std::end(tmpMap); ++it) {
 		unsigned charCode = it.key().toInteger();
@@ -158,24 +234,32 @@ void PreprocessedFontFace::fromCbor(const QCborMap& cbor)
 		storedChar.fromCbor(it.value().toMap());
 		storedCharacters.insert(charCode, storedChar);
 	}
+	QCborMap kerningMap = cbor[KERNING_KEY].toMap();
+	for(auto it = std::begin(kerningMap) ; it != std::end(kerningMap) ; ++it ) {
+		QCborMap kerningMap2 = it.value().toMap();
+		PerCharacterKerning perCharKern;
+		for(auto zt = std::begin(kerningMap2) ; zt != std::end(kerningMap2) ; ++zt ) {
+			QCborArray arr = zt->toArray();
+			Vec2f tmpVec = { arr[0].toDouble(), arr[1].toDouble() };
+			perCharKern.insert(zt.key().toInteger(),tmpVec);
+		}
+		kerning.insert(it.key().toInteger(),perCharKern);
+	}
 }
 
 void PreprocessedFontFace::toData(QDataStream& dataStream) const
 {
-/*
-	SDFType type;
-	DistanceType distType;
-	uint32_t bitmap_size;
-	uint32_t bitmap_padding;
-	QMap<uint32_t,StoredCharacter> storedCharacters;
-*/
-	dataStream << static_cast<uint8_t>(type) << static_cast<uint8_t>(distType) << bitmap_size << bitmap_padding << static_cast<uint32_t>(storedCharacters.size());
+	QByteArray utf8str = this->fontFamilyName.toUtf8();
+	dataStream << static_cast<uint32_t>(utf8str.size());
+	dataStream.writeRawData(utf8str.data(),utf8str.length());
+	dataStream << static_cast<uint8_t>(type) << static_cast<uint8_t>(distType) << bitmap_size << bitmap_logical_size << bitmap_padding << hasVert << static_cast<uint32_t>(storedCharacters.size());
 	// Write table of contents
 	QMap<uint32_t,uint32_t> offsets;
 	auto currOffset = dataStream.device()->pos();
 	for(qsizetype i = 0; i < storedCharacters.size(); ++i) {
 		dataStream << uint32_t(0) << uint32_t(0);
 	}
+	dataStream << kerning;
 	for(auto it = std::begin(storedCharacters); it != std::end(storedCharacters); ++it) {
 		auto glyphOffset = dataStream.device()->pos();
 		offsets.insert(it.key(), glyphOffset);
@@ -189,9 +273,16 @@ void PreprocessedFontFace::toData(QDataStream& dataStream) const
 
 void PreprocessedFontFace::fromData(QDataStream& dataStream)
 {
+	{
+		uint32_t familyNameSize;
+		dataStream >> familyNameSize;
+		QByteArray familyNameUtf8(familyNameSize, 0);
+		dataStream.readRawData(familyNameUtf8.data(),familyNameSize);
+		this->fontFamilyName = QString::fromUtf8(familyNameUtf8);
+	}
 	uint8_t tmpType, tmpDist;
 	uint32_t charCount;
-	dataStream >> tmpType >> tmpDist >> bitmap_size >> bitmap_padding >> charCount;
+	dataStream >> tmpType >> tmpDist >> bitmap_size >> bitmap_logical_size >> bitmap_padding >> hasVert >> charCount;
 	this->type = static_cast<SDFType>(tmpType);
 	this->distType = static_cast<DistanceType>(tmpDist);
 	QMap<uint32_t,uint32_t> offsets;
@@ -200,6 +291,7 @@ void PreprocessedFontFace::fromData(QDataStream& dataStream)
 		dataStream >> k >> v;
 		offsets.insert(k,v);
 	}
+	dataStream >> kerning;
 	for(auto it = std::begin(offsets); it != std::end(offsets); ++it) {
 		dataStream.device()->seek(it.value());
 		StoredCharacter tmpChar;
@@ -227,6 +319,14 @@ void StoredCharacter::toCbor(QCborMap& cbor) const
 	cbor.insert(BEARING_Y_KEY,bearing_y);
 	cbor.insert(ADVANCE_X_KEY,advance_x);
 	cbor.insert(ADVANCE_Y_KEY,advance_y);
+	cbor.insert(METRICSWIDTH_KEY,metricWidth);
+	cbor.insert(METRICSHEIGHT_KEY,metricHeight);
+	cbor.insert(HORIBEARINGX_KEY,horiBearingX);
+	cbor.insert(HORIBEARINGY_KEY,horiBearingY);
+	cbor.insert(HORIADVANCE_KEY,horiAdvance);
+	cbor.insert(VERTBEARINGX_KEY,vertBearingX);
+	cbor.insert(VERTBEARINGY_KEY,vertBearingY);
+	cbor.insert(VERTADVANCE_KEY,vertAdvance);
 	cbor.insert(SDF_KEY,sdf);
 }
 
@@ -239,6 +339,7 @@ QCborMap StoredCharacter::toCbor() const
 
 void StoredCharacter::fromCbor(const QCborMap& cbor)
 {
+	// Base data
 	this->valid = cbor[VALID_KEY].toBool(false);
 	this->width = cbor[WIDTH_KEY].toInteger(0);
 	this->height = cbor[HEIGHT_KEY].toInteger(0);
@@ -246,6 +347,16 @@ void StoredCharacter::fromCbor(const QCborMap& cbor)
 	this->bearing_y = cbor[BEARING_Y_KEY].toInteger(0);
 	this->advance_x = cbor[ADVANCE_X_KEY].toInteger(0);
 	this->advance_y = cbor[ADVANCE_Y_KEY].toInteger(0);
+	// Metrics
+	this->metricWidth = cbor[METRICSWIDTH_KEY].toDouble();
+	this->metricHeight = cbor[METRICSHEIGHT_KEY].toDouble();
+	this->horiBearingX = cbor[HORIBEARINGX_KEY].toDouble();
+	this->horiBearingY = cbor[HORIBEARINGY_KEY].toDouble();
+	this->horiAdvance = cbor[HORIADVANCE_KEY].toDouble();
+	this->vertBearingX = cbor[VERTBEARINGX_KEY].toDouble();
+	this->vertBearingY = cbor[VERTBEARINGY_KEY].toDouble();
+	this->vertAdvance = cbor[VERTADVANCE_KEY].toDouble();
+	// The actual data
 	this->sdf = cbor[SDF_KEY].toByteArray();
 }
 
@@ -492,14 +603,14 @@ void StoredCharacter::fromFreeTypeGlyph(FT_GlyphSlot glyphSlot, const SDFGenerat
 	this->advance_x = glyphSlot->advance.x;
 	this->advance_y = glyphSlot->advance.y;
 
-/*
-	unsigned width; // Intended width: actual size is 32x32 or whatever else set in globally in the font
-	unsigned height; // Intended height: actual size is 32x32 or whatever else set in globally in the font
-	int bearing_x;
-	int bearing_y;
-	unsigned advance;
-	QByteArray sdf;
-*/
+	this->metricWidth = convert26_6ToDouble(glyphSlot->metrics.width);
+	this->metricHeight = convert26_6ToDouble(glyphSlot->metrics.height);
+	this->horiBearingX = convert26_6ToDouble(glyphSlot->metrics.horiBearingX);
+	this->horiBearingY = convert26_6ToDouble(glyphSlot->metrics.horiBearingY);
+	this->horiAdvance = convert26_6ToDouble(glyphSlot->metrics.horiAdvance);
+	this->vertBearingX = convert26_6ToDouble(glyphSlot->metrics.vertBearingX);
+	this->vertBearingY = convert26_6ToDouble(glyphSlot->metrics.vertBearingY);
+	this->vertAdvance = convert26_6ToDouble(glyphSlot->metrics.vertAdvance);
 
 	QBuffer buff(&this->sdf);
 	QImage oldImg = fromFBitmap(glyphSlot->bitmap, args.internalProcessSize - (args.padding*2), args.internalProcessSize - (args.padding*2));
@@ -531,19 +642,10 @@ void StoredCharacter::fromFreeTypeGlyph(FT_GlyphSlot glyphSlot, const SDFGenerat
 
 void StoredCharacter::toData(QDataStream& dataStream) const
 {
-	/*
-	bool valid;
-	unsigned width; // Intended width: actual size is 32x32 or whatever else set in globally in the font
-	unsigned height; // Intended height: actual size is 32x32 or whatever else set in globally in the font
-	int bearing_x;
-	int bearing_y;
-	unsigned advance_x;
-	unsigned advance_y;
-	QByteArray sdf;
-	*/
 	dataStream << valid;
 	if(valid) {
-		dataStream << width << height << bearing_x << bearing_y << advance_x << advance_y << static_cast<uint32_t>(sdf.length());
+		dataStream << width << height << bearing_x << bearing_y << advance_x << advance_y << metricWidth << metricHeight
+			<< horiBearingX << horiBearingY << horiAdvance << vertBearingX << vertBearingY << vertAdvance << static_cast<uint32_t>(sdf.length());
 		dataStream.writeRawData(sdf.data(),sdf.length());
 	}
 }
@@ -553,7 +655,8 @@ void StoredCharacter::fromData(QDataStream& dataStream)
 	dataStream >> valid;
 	if(valid) {
 		uint32_t sdf_len;
-		dataStream >> width >> height >> bearing_x >> bearing_y >> advance_x >> advance_y >> sdf_len;
+		dataStream >> width >> height >> bearing_x >> bearing_y >> advance_x >> advance_y >> metricWidth >> metricHeight
+			>> horiBearingX >> horiBearingY >> horiAdvance >> vertBearingX >> vertBearingY >> vertAdvance >> sdf_len;
 		QByteArray raw(sdf_len, 0);
 		dataStream.readRawData(raw.data(),sdf_len);
 		this->sdf = raw;
@@ -656,6 +759,42 @@ void SDFGenerationArguments::fromArgs(const QVariantMap& args)
 			}
 		}
 	}
+}
+QDataStream &operator<<(QDataStream &stream, const PerCharacterKerning &processedFontFace) {
+	stream << static_cast<uint32_t>(processedFontFace.size());
+	for( auto it = std::begin(processedFontFace) ; it != std::end(processedFontFace) ; ++it ) {
+		stream << it.key() << it.value();
+	}
+	return stream;
+}
+QDataStream &operator>>(QDataStream &stream, PerCharacterKerning &processedFontFace) {
+	uint32_t rawSize;
+	stream >> rawSize;
+	for(uint32_t i = 0; i < rawSize; ++i) {
+		uint32_t k;
+		Vec2f v;
+		stream >> k >> v;
+		processedFontFace.insert(k,v);
+	}
+	return stream;
+}
+QDataStream &operator<<(QDataStream &stream, const KerningMap &processedFontFace) {
+	stream << static_cast<uint32_t>(processedFontFace.size());
+	for( auto it = std::begin(processedFontFace) ; it != std::end(processedFontFace) ; ++it ) {
+		stream << it.key() << it.value();
+	}
+	return stream;
+}
+QDataStream &operator>>(QDataStream &stream, KerningMap &processedFontFace) {
+	uint32_t rawSize;
+	stream >> rawSize;
+	for(uint32_t i = 0; i < rawSize; ++i) {
+		uint32_t k;
+		PerCharacterKerning v;
+		stream >> k >> v;
+		processedFontFace.insert(k,v);
+	}
+	return stream;
 }
 
 QDataStream& operator<<(QDataStream& stream, const StoredCharacter& storedCharacter) {

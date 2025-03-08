@@ -24,6 +24,8 @@ int main(int argc, char *argv[])
 			QFile fil(args.value(IN_BIN_KEY).toString());
 			if(fil.open(QFile::ReadOnly)) {
 				QDataStream binF(&fil);
+				binF.setVersion(QDataStream::Qt_4_0);
+				binF.setByteOrder(QDataStream::BigEndian);
 				fontface.fromData(binF);
 			}
 		}
@@ -43,6 +45,8 @@ int main(int argc, char *argv[])
 			QFile fil(args.value(OUT_BIN_KEY).toString());
 			if(fil.open(QFile::WriteOnly)) {
 				QDataStream binF(&fil);
+				binF.setVersion(QDataStream::Qt_4_0);
+				binF.setByteOrder(QDataStream::BigEndian);
 				fontface.toData(binF);
 				fil.flush();
 				fil.close();

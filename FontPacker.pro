@@ -7,7 +7,7 @@ INCLUDEPATH += I/usr/include/harfbuzz
 QMAKE_CXXFLAGS += -fopenmp
 QMAKE_CFLAGS += -fopenmp
 QMAKE_LFLAGS += -fopenmp
-LIBS += -lfreetype -fopenmp
+LIBS += -lfreetype -lharfbuzz -fopenmp
 
 # You can make your code fail to compile if it uses deprecated APIs.
 # In order to do so, uncomment the following line.

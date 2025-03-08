@@ -35,6 +35,21 @@ extern const QString OUT_BIN_KEY;
 extern const QString OUT_CBOR_KEY;
 extern const QString DEFAULT_FONT_PATH;
 extern const QString BITMAP_SIZE_KEY;
+extern const QString BITMAP_LOGICAL_SIZE_KEY;
 extern const QString GLYPHS_KEY;
+extern const QString FONT_NAME_KEY;
+extern const QString HORIBEARINGX_KEY;
+extern const QString HORIBEARINGY_KEY;
+extern const QString HORIADVANCE_KEY;
+extern const QString VERTBEARINGX_KEY;
+extern const QString VERTBEARINGY_KEY;
+extern const QString VERTADVANCE_KEY;
+extern const QString HASVERTICAL_KEY;
+extern const QString LINEARHORIADVANCE_KEY;
+extern const QString LINEARVERTADVANCE_KEY;
+extern const QString METRICSWIDTH_KEY;
+extern const QString METRICSHEIGHT_KEY;
+extern const QString HAS_VERT_KEY;
+extern const QString KERNING_KEY;
 
 #endif // CONSTSTRINGS_HPP
