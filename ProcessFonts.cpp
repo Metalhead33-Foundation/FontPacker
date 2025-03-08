@@ -80,6 +80,7 @@ void PreprocessedFontFace::processFonts(SDFGenerationArguments& args)
 	this->type = args.type;
 	this->distType = args.distType;
 	this->bitmap_size = args.intendedSize;
+	this->bitmap_logical_size = args.internalProcessSize;
 	this->bitmap_padding = args.padding;
 	this->jpeg = args.jpeg;
 	unsigned to_scale = args.internalProcessSize - args.padding;
@@ -171,8 +172,8 @@ void PreprocessedFontFace::processFonts(SDFGenerationArguments& args)
 				auto gotKerning = FT_Get_Kerning(face, it.value(), zt.value(), FT_KERNING_DEFAULT, &kernVector);
 				if(!gotKerning && (kernVector.x || kernVector.y)) {
 					Vec2f tmpVec;
-					tmpVec.first = convert16_16ToDouble(kernVector.x);
-					tmpVec.second = convert16_16ToDouble(kernVector.y);
+					tmpVec.first = convert26_6ToDouble(kernVector.x);
+					tmpVec.second = convert26_6ToDouble(kernVector.y);
 					tmpKern.insert(zt.key(),tmpVec);
 				}
 			}
