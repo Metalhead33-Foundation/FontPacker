@@ -6,9 +6,9 @@
 #include <QCborArray>
 #include <QCborValue>
 #include <QByteArray>
-#include <QOpenGLFunctions>
+#include "GlHelpers.hpp"
 #include <QOpenGLShaderProgram>
-#include <QOffscreenSurface>
+#include <QList>
 #include <memory>
 
 enum SDfGenerationMode {
@@ -33,12 +33,15 @@ struct SDFGenerationArguments {
 	unsigned padding;
 	unsigned samples_to_check_x;
 	unsigned samples_to_check_y;
-	QOpenGLFunctions* glFuncs;
-	QOpenGLExtraFunctions* extraFuncs;
-	std::unique_ptr<QOpenGLContext> glContext;
-	std::unique_ptr<QOffscreenSurface> glSurface;
+	std::unique_ptr<GlHelpers> glHelpers;
 	std::unique_ptr<QOpenGLShaderProgram> glShader;
 	void fromArgs(const QVariantMap& args);
+};
+
+struct StoredCharacter;
+struct PreprocessedFontFace {
+	SDFType type;
+	DistanceType distType;
 };
 
 typedef struct FT_GlyphSlotRec_*  FT_GlyphSlot;

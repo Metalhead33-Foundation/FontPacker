@@ -85,15 +85,7 @@ void processFonts(const QVariantMap& args)
 				qDebug("Requesting OpenGL ES 3.2 context");
 				fmt.setVersion(3, 2);
 			}
-			QSurfaceFormat::setDefaultFormat(fmt);
-			args2.glContext = std::make_unique<QOpenGLContext>();
-			args2.glContext->setFormat(fmt);
-			if(!args2.glContext->create()) throw std::runtime_error("Failed to create OpenGL context!");
-			args2.glSurface = std::make_unique<QOffscreenSurface>();
-			args2.glSurface->create();
-			if(!args2.glContext->makeCurrent(args2.glSurface.get())) throw std::runtime_error("Failed to make the context current!");
-			args2.glFuncs = args2.glContext->functions();
-			args2.extraFuncs = args2.glContext->extraFunctions();
+			args2.glHelpers = std::make_unique<GlHelpers>();
 			args2.glShader = std::make_unique<QOpenGLShaderProgram>();
 			if(!args2.glShader->create()) throw std::runtime_error("Failed to create shader!");
 			QFile res(args2.distType == DistanceType::Eucledian ? ":/shader1.glsl" : ":/shader2.glsl");
@@ -290,61 +282,34 @@ QImage produceSdfGL(const QImage& source, unsigned width, unsigned height, const
 	glPixelStorei( GL_PACK_ALIGNMENT, 1);
 	glPixelStorei(  GL_UNPACK_ALIGNMENT, 1);
 	QImage newimg(source.width(), source.height(), QImage::Format_Grayscale8);
-	GLuint oldTexId, newTexId, newTexId2, uniformBuffer;
 	// Old Tex
-	args.glFuncs->glGenTextures(1,&oldTexId);
-	args.glFuncs->glBindTexture(GL_TEXTURE_2D,oldTexId);
-	args.glFuncs->glTexImage2D(GL_TEXTURE_2D,0,GL_R8,newimg.width(),newimg.height(),0,GL_RED,GL_UNSIGNED_BYTE, nullptr);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	for(int y = 0; y < source.height(); ++y) {
-		glTexSubImage2D(GL_TEXTURE_2D,0,0,y,source.width(),1,GL_RED,GL_UNSIGNED_BYTE,source.scanLine(y));
-	}
+	GlTexture oldTex(source);
 	// New Tex
-	args.glFuncs->glGenTextures(1,&newTexId);
-	args.glFuncs->glBindTexture(GL_TEXTURE_2D,newTexId);
-	args.glFuncs->glTexImage2D(GL_TEXTURE_2D,0,GL_R32F,newimg.width(),newimg.height(),0,GL_RED,GL_FLOAT, nullptr);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	GlTexture newTex(newimg.width(),newimg.height(), { GL_R32F, GL_RED, GL_FLOAT } );
 	// New Tex 2
-	args.glFuncs->glGenTextures(1,&newTexId2);
-	args.glFuncs->glBindTexture(GL_TEXTURE_2D,newTexId2);
-	args.glFuncs->glTexImage2D(GL_TEXTURE_2D,0,GL_R8,newimg.width(),newimg.height(),0,GL_RED,GL_UNSIGNED_BYTE, nullptr);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
+	GlTexture newTex2(newimg.width(),newimg.height(), { GL_R8, GL_RED, GL_UNSIGNED_BYTE } );
+	GlStorageBuffer uniformBuffer(args.glHelpers->glFuncs, args.glHelpers->extraFuncs);
 	UniformForCompute uniform;
 	uniform.width = args.samples_to_check_x ? args.samples_to_check_x / 2 : width / 2;
 	uniform.height = args.samples_to_check_y ? args.samples_to_check_y / 2 : height / 2;
-	args.glFuncs->glGenBuffers(1,&uniformBuffer);
-	args.glFuncs->glBindBuffer(GL_UNIFORM_BUFFER,uniformBuffer);
-	args.glFuncs->glBufferData(GL_UNIFORM_BUFFER,sizeof(UniformForCompute),&uniform,  GL_STATIC_DRAW);
-	args.glFuncs->glUseProgram(args.glShader->programId());
+	uniformBuffer.initializeFrom(uniform);
+	args.glHelpers->glFuncs->glUseProgram(args.glShader->programId());
 	int fontUniform = args.glShader->uniformLocation("fontTexture");
 	int sdfUniform1 = args.glShader->uniformLocation("rawSdfTexture");
 	int sdfUniform2 = args.glShader->uniformLocation("isInsideTex");
 	int dimensionsUniform = args.glShader->uniformLocation("Dimensions");
-	args.extraFuncs->glBindImageTexture(0, oldTexId, 0, false, 0, GL_READ_ONLY, GL_R8 );
-	args.glFuncs->glUniform1i(fontUniform,0);
-	args.extraFuncs->glBindImageTexture(1, newTexId, 0, false, 0, GL_WRITE_ONLY, GL_R32F );
-	args.glFuncs->glUniform1i(sdfUniform1,1);
-	args.extraFuncs->glBindImageTexture(2, newTexId2, 0, false, 0, GL_WRITE_ONLY, GL_R8 );
-	args.glFuncs->glUniform1i(sdfUniform2,2);
-	args.extraFuncs->glBindBufferBase(GL_UNIFORM_BUFFER, 3, uniformBuffer);
-	args.extraFuncs->glUniformBlockBinding(args.glShader->programId(), dimensionsUniform, 3);
-	args.extraFuncs->glDispatchCompute(newimg.width(),newimg.height(),1);
-	args.extraFuncs->glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-	args.glFuncs->glDeleteBuffers(1,&uniformBuffer);
-	std::vector<uint8_t> areTheyInside(newimg.width() * newimg.height());
-	std::vector<float> rawDistances(newimg.width() * newimg.height());
-	args.glFuncs->glBindTexture(GL_TEXTURE_2D,newTexId2);
-	glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_UNSIGNED_BYTE, areTheyInside.data() );
-	args.glFuncs->glBindTexture(GL_TEXTURE_2D,newTexId);
-	glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_FLOAT, rawDistances.data() );
-	args.glFuncs->glDeleteTextures(1,&oldTexId);
-	args.glFuncs->glDeleteTextures(1,&newTexId);
-	args.glFuncs->glDeleteTextures(1,&newTexId2);
-
+	oldTex.bindAsImage(args.glHelpers->extraFuncs, 0, GL_READ_ONLY);
+	args.glHelpers->glFuncs->glUniform1i(fontUniform,0);
+	newTex.bindAsImage(args.glHelpers->extraFuncs, 1, GL_WRITE_ONLY);
+	args.glHelpers->glFuncs->glUniform1i(sdfUniform1,1);
+	newTex2.bindAsImage(args.glHelpers->extraFuncs, 2, GL_WRITE_ONLY);
+	args.glHelpers->glFuncs->glUniform1i(sdfUniform2,2);
+	uniformBuffer.bindBase(3);
+	args.glHelpers->extraFuncs->glUniformBlockBinding(args.glShader->programId(), dimensionsUniform, 3);
+	args.glHelpers->extraFuncs->glDispatchCompute(newimg.width(),newimg.height(),1);
+	args.glHelpers->extraFuncs->glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+	std::vector<uint8_t> areTheyInside = newTex2.getTextureAs<uint8_t>();
+	std::vector<float> rawDistances = newTex.getTextureAs<float>();
 	float maxDistIn = std::numeric_limits<float>::epsilon();
 	float maxDistOut = std::numeric_limits<float>::epsilon();
 	for(size_t i = 0; i < rawDistances.size(); ++i) {
