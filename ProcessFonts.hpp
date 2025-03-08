@@ -38,6 +38,7 @@ struct SDFGenerationArguments {
 	QString font_path;
 	uint32_t char_min;
 	uint32_t char_max;
+	bool jpeg;
 	std::unique_ptr<GlHelpers> glHelpers;
 	std::unique_ptr<QOpenGLShaderProgram> glShader;
 	void fromArgs(const QVariantMap& args);
@@ -60,6 +61,7 @@ struct PreprocessedFontFace {
 	uint32_t bitmap_logical_size;
 	uint32_t bitmap_padding;
 	bool hasVert;
+	bool jpeg;
 	KerningMap kerning;
 	QMap<uint32_t,StoredCharacter> storedCharacters;
 	void processFonts(const QVariantMap& args);

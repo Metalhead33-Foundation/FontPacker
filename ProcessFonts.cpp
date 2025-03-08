@@ -81,6 +81,7 @@ void PreprocessedFontFace::processFonts(SDFGenerationArguments& args)
 	this->distType = args.distType;
 	this->bitmap_size = args.intendedSize;
 	this->bitmap_padding = args.padding;
+	this->jpeg = args.jpeg;
 	unsigned to_scale = args.internalProcessSize - args.padding;
 	FT_Library library;
 	auto error = FT_Init_FreeType( &library );
@@ -192,6 +193,7 @@ void PreprocessedFontFace::toCbor(QCborMap& cbor) const
 	cbor.insert(BITMAP_LOGICAL_SIZE_KEY, bitmap_logical_size);
 	cbor.insert(PADDING_KEY, bitmap_padding);
 	cbor.insert(HAS_VERT_KEY, hasVert);
+	cbor.insert(JPEG_KEY, jpeg);
 	QCborMap tmpMap;
 	for(auto it = std::begin(storedCharacters); it != std::end(storedCharacters); ++it) {
 		tmpMap.insert(it.key(),it.value().toCbor());
@@ -227,6 +229,7 @@ void PreprocessedFontFace::fromCbor(const QCborMap& cbor)
 	this->bitmap_logical_size = cbor[BITMAP_LOGICAL_SIZE_KEY].toInteger();
 	this->bitmap_padding = cbor[PADDING_KEY].toInteger();
 	this->hasVert = cbor[HAS_VERT_KEY].toBool();
+	this->jpeg = cbor[JPEG_KEY].toBool();
 	QCborMap tmpMap = cbor[GLYPHS_KEY].toMap();
 	for(auto it = std::begin(tmpMap); it != std::end(tmpMap); ++it) {
 		unsigned charCode = it.key().toInteger();
@@ -252,7 +255,8 @@ void PreprocessedFontFace::toData(QDataStream& dataStream) const
 	QByteArray utf8str = this->fontFamilyName.toUtf8();
 	dataStream << static_cast<uint32_t>(utf8str.size());
 	dataStream.writeRawData(utf8str.data(),utf8str.length());
-	dataStream << static_cast<uint8_t>(type) << static_cast<uint8_t>(distType) << bitmap_size << bitmap_logical_size << bitmap_padding << hasVert << static_cast<uint32_t>(storedCharacters.size());
+	dataStream << static_cast<uint8_t>(type) << static_cast<uint8_t>(distType) << bitmap_size << bitmap_logical_size << bitmap_padding << hasVert
+			   << jpeg << static_cast<uint32_t>(storedCharacters.size());
 	// Write table of contents
 	QMap<uint32_t,uint32_t> offsets;
 	auto currOffset = dataStream.device()->pos();
@@ -282,7 +286,7 @@ void PreprocessedFontFace::fromData(QDataStream& dataStream)
 	}
 	uint8_t tmpType, tmpDist;
 	uint32_t charCount;
-	dataStream >> tmpType >> tmpDist >> bitmap_size >> bitmap_logical_size >> bitmap_padding >> hasVert >> charCount;
+	dataStream >> tmpType >> tmpDist >> bitmap_size >> bitmap_logical_size >> bitmap_padding >> hasVert >> jpeg >> charCount;
 	this->type = static_cast<SDFType>(tmpType);
 	this->distType = static_cast<DistanceType>(tmpDist);
 	QMap<uint32_t,uint32_t> offsets;
@@ -636,7 +640,7 @@ void StoredCharacter::fromFreeTypeGlyph(FT_GlyphSlot glyphSlot, const SDFGenerat
 	}
 	if(args.intendedSize) img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio,Qt::SmoothTransformation);
 	buff.open(QIODevice::WriteOnly);
-	if(!img.save(&buff,"PNG",-1)) throw std::runtime_error("Failed to save image!");
+	if(!img.save(&buff, args.jpeg ? "JPG" : "PNG",-1)) throw std::runtime_error("Failed to save image!");
 	buff.close();
 }
 
@@ -672,6 +676,7 @@ void StoredCharacter::fromData(QDataStream& dataStream)
 
 void SDFGenerationArguments::fromArgs(const QVariantMap& args)
 {
+	this->jpeg = args.contains(JPEG_KEY);
 	this->internalProcessSize = args.value(INTERNAL_PROCESS_SIZE_KEY, INTERNAL_RENDER_SIZE).toUInt();
 	this->intendedSize = args.value(INTENDED_SIZE_KEY, 0).toUInt();
 	this->padding = args.value(PADDING_KEY, PADDING).toUInt();

@@ -51,5 +51,6 @@ extern const QString METRICSWIDTH_KEY;
 extern const QString METRICSHEIGHT_KEY;
 extern const QString HAS_VERT_KEY;
 extern const QString KERNING_KEY;
+extern const QString JPEG_KEY;
 
 #endif // CONSTSTRINGS_HPP
