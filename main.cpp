@@ -4,6 +4,7 @@
 #include <QFile>
 #include "ConstStrings.hpp"
 #include "ProcessFonts.hpp"
+#include "MainWindow.hpp"
 
 QVariantMap parseArguments(int argc, char *argv[]);
 int main(int argc, char *argv[])
@@ -75,6 +76,19 @@ int main(int argc, char *argv[])
 		// If you do not need a running Qt event loop, remove the call
 		// to a.exec() or use the Non-Qt Plain C++ Application template.
 
+		QSurfaceFormat fmt;
+		fmt.setDepthBufferSize(24);
+		if (QOpenGLContext::openGLModuleType() == QOpenGLContext::LibGL) {
+			qDebug("Requesting OpenGL 4.3 core context");
+			fmt.setVersion(4, 3);
+			fmt.setProfile(QSurfaceFormat::CoreProfile);
+		} else {
+			qDebug("Requesting OpenGL ES 3.2 context");
+			fmt.setVersion(3, 2);
+		}
+		QSurfaceFormat::setDefaultFormat(fmt);
+		MainWindow* mainWin = new MainWindow();
+		mainWin->show();
 		return a.exec();
 	}
 }

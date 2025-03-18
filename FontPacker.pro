@@ -1,4 +1,4 @@
-QT += core gui opengl widgets
+QT += core gui opengl widgets openglwidgets
 
 CONFIG += c++2a cmdline
 
@@ -16,6 +16,8 @@ DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs depr
 SOURCES += \
         ConstStrings.cpp \
         GlHelpers.cpp \
+        MainWindow.cpp \
+        OpenGLCanvas.cpp \
         ProcessFonts.cpp \
         main.cpp
 
@@ -28,13 +30,19 @@ DISTFILES += \
     .gitignore \
     LICENSE \
     README.md \
+    screen.vert.glsl \
     shader1.glsl \
     shader2.glsl
 
 HEADERS += \
     ConstStrings.hpp \
     GlHelpers.hpp \
+    MainWindow.hpp \
+    OpenGLCanvas.hpp \
     ProcessFonts.hpp
 
 RESOURCES += \
     resources.qrc
+
+FORMS += \
+    MainWindow.ui
