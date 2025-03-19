@@ -71,7 +71,7 @@ public:
 	QByteArray getTexture() const;
 	template <typename T, typename Alloc = std::allocator<T>> std::vector<T,Alloc> getTextureAs() const {
 		size_t elemSize = getBytesPerPixel() / sizeof(T);
-		std::vector<T> vec(elemSize * width * height);
+		std::vector<T,Alloc> vec(elemSize * width * height);
 		getTexture(vec.data());
 		return vec;
 	}

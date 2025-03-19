@@ -16,6 +16,7 @@ DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs depr
 SOURCES += \
         ConstStrings.cpp \
         GlHelpers.cpp \
+        HugePreallocator.cpp \
         MainWindow.cpp \
         OpenGLCanvas.cpp \
         ProcessFonts.cpp \
@@ -32,12 +33,15 @@ DISTFILES += \
     README.md \
     screen.vert.glsl \
     shader1.glsl \
-    shader2.glsl
+    shader2.glsl \
+    shader_msdf1.glsl
 
 HEADERS += \
     ConstStrings.hpp \
     GlHelpers.hpp \
+    HugePreallocator.hpp \
     MainWindow.hpp \
+    Mallocator.hpp \
     OpenGLCanvas.hpp \
     ProcessFonts.hpp
 

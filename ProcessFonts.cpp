@@ -1,4 +1,5 @@
 #include "ProcessFonts.hpp"
+#include "HugePreallocator.hpp"
 #include <harfbuzz/hb-ft.h>
 #include <stdexcept>
 #include <QTextStream>
@@ -18,6 +19,7 @@
 #include <glm/glm.hpp>
 #include <QOpenGLExtraFunctions>
 #include "ConstStrings.hpp"
+#include "Mallocator.hpp""
 
 #if defined (_MSC_VER)
 #define STD140 __declspec(align(16))
@@ -128,7 +130,7 @@ void PreprocessedFontFace::processFonts(SDFGenerationArguments& args)
 			args.glHelpers = std::make_unique<GlHelpers>();
 			args.glShader = std::make_unique<QOpenGLShaderProgram>();
 			if(!args.glShader->create()) throw std::runtime_error("Failed to create shader!");
-			QFile res(args.distType == DistanceType::Euclidean ? ":/shader1.glsl" : ":/shader2.glsl");
+			QFile res(args.type == SDFType::SDF ? (args.distType == DistanceType::Euclidean ? ":/shader1.glsl" : ":/shader2.glsl") : ":/shader_msdf1.glsl");
 			if(res.open(QFile::ReadOnly)) {
 				QByteArray shdrArr = res.readAll();
 				if(!args.glShader->addCacheableShaderFromSourceCode(QOpenGLShader::Compute,shdrArr)) {
@@ -481,14 +483,27 @@ struct STD140 UniformForCompute {
 	int32_t width, height;
 	int32_t padding[2];
 };
+struct Rgb32f {
+	float r, g, b, a;
+};
+
 QImage produceSdfGL(const QImage& source, const SDFGenerationArguments& args) {
 	glPixelStorei( GL_PACK_ALIGNMENT, 1);
 	glPixelStorei(  GL_UNPACK_ALIGNMENT, 1);
-	QImage newimg(source.width(), source.height(), QImage::Format_Grayscale8);
+	QImage::Format finalImageFormat;
+	GlTextureFormat temporaryTextureFormat;
+	switch (args.type ) {
+		case SDF: finalImageFormat = QImage::Format_Grayscale8; temporaryTextureFormat = { GL_R32F, GL_RED, GL_FLOAT }; break;
+		case MSDF: finalImageFormat = QImage::Format_RGB888; temporaryTextureFormat = { GL_RGBA32F, GL_RGBA, GL_FLOAT }; break;
+		case MSDFA: finalImageFormat = QImage::Format_RGBA8888; temporaryTextureFormat = { GL_RGBA32F, GL_RGBA, GL_FLOAT }; break;
+			break;
+	}
+
+	QImage newimg(source.width(), source.height(), finalImageFormat);
 	// Old Tex
 	GlTexture oldTex(source);
 	// New Tex
-	GlTexture newTex(newimg.width(),newimg.height(), { GL_R32F, GL_RED, GL_FLOAT } );
+	GlTexture newTex(newimg.width(),newimg.height(), temporaryTextureFormat );
 	// New Tex 2
 	GlTexture newTex2(newimg.width(),newimg.height(), { GL_R8, GL_RED, GL_UNSIGNED_BYTE } );
 	GlStorageBuffer uniformBuffer(args.glHelpers->glFuncs, args.glHelpers->extraFuncs);
@@ -505,40 +520,79 @@ QImage produceSdfGL(const QImage& source, const SDFGenerationArguments& args) {
 	args.glHelpers->glFuncs->glUniform1i(fontUniform,0);
 	newTex.bindAsImage(args.glHelpers->extraFuncs, 1, GL_WRITE_ONLY);
 	args.glHelpers->glFuncs->glUniform1i(sdfUniform1,1);
+	if(args.type == SDFType::SDF) {
 	newTex2.bindAsImage(args.glHelpers->extraFuncs, 2, GL_WRITE_ONLY);
 	args.glHelpers->glFuncs->glUniform1i(sdfUniform2,2);
 	uniformBuffer.bindBase(3);
+	}
 	args.glHelpers->extraFuncs->glUniformBlockBinding(args.glShader->programId(), dimensionsUniform, 3);
 	args.glHelpers->extraFuncs->glDispatchCompute(newimg.width(),newimg.height(),1);
 	args.glHelpers->extraFuncs->glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-	std::vector<uint8_t> areTheyInside = newTex2.getTextureAs<uint8_t>();
-	std::vector<float> rawDistances = newTex.getTextureAs<float>();
-	float maxDistIn = std::numeric_limits<float>::epsilon();
-	float maxDistOut = std::numeric_limits<float>::epsilon();
-	for(size_t i = 0; i < rawDistances.size(); ++i) {
-		if(areTheyInside[i]) {
-			maxDistIn = std::max(maxDistIn,rawDistances[i]);
-		} else {
-			maxDistOut = std::max(maxDistOut,rawDistances[i]);
-		}
-	}
-	for(size_t i = 0; i < rawDistances.size(); ++i) {
-		float& it = rawDistances[i];
-		if(areTheyInside[i]) {
-			it /= maxDistIn;
-			it = 0.5f + (it * 0.5f);
-		} else {
-			it /= maxDistOut;
-			it = 0.5f - (it * 0.5f);
-		}
-	}
 
-	for(int y = 0; y < newimg.height(); ++y) {
-		uchar* scanline = newimg.scanLine(y);
-		const float* rawScanline = &rawDistances[newimg.width()*y];
-		for(int x = 0; x < newimg.width(); ++x) {
-			scanline[x] = static_cast<uint8_t>(rawScanline[x] * 255.f);
+	switch (args.type) {
+		case SDF: {
+			std::vector<uint8_t> areTheyInside = newTex2.getTextureAs<uint8_t>();
+			std::vector<float> rawDistances = newTex.getTextureAs<float>();
+			float maxDistIn = std::numeric_limits<float>::epsilon();
+			float maxDistOut = std::numeric_limits<float>::epsilon();
+			for(size_t i = 0; i < rawDistances.size(); ++i) {
+				if(areTheyInside[i]) {
+					maxDistIn = std::max(maxDistIn,rawDistances[i]);
+				} else {
+					maxDistOut = std::max(maxDistOut,rawDistances[i]);
+				}
+			}
+			for(size_t i = 0; i < rawDistances.size(); ++i) {
+				float& it = rawDistances[i];
+				if(areTheyInside[i]) {
+					it /= maxDistIn;
+					it = 0.5f + (it * 0.5f);
+				} else {
+					it /= maxDistOut;
+					it = 0.5f - (it * 0.5f);
+				}
+			}
+
+			for(int y = 0; y < newimg.height(); ++y) {
+				uchar* scanline = newimg.scanLine(y);
+				const float* rawScanline = &rawDistances[newimg.width()*y];
+				for(int x = 0; x < newimg.width(); ++x) {
+					scanline[x] = static_cast<uint8_t>(rawScanline[x] * 255.f);
+				}
+			}
+			break;
 		}
+		case MSDF: {
+			// We need HugePreallocator!
+			//std::vector<Rgb32f,Mallocator<Rgb32f>> rawDistances = newTex.getTextureAs<Rgb32f,Mallocator<Rgb32f>>();
+			std::vector<Rgb32f,HugePreallocator<Rgb32f>> rawDistances = newTex.getTextureAs<Rgb32f,HugePreallocator<Rgb32f>>();
+			float maxR = std::numeric_limits<float>::epsilon();
+			float maxG = std::numeric_limits<float>::epsilon();
+			float maxB = std::numeric_limits<float>::epsilon();
+			for(const auto& it : rawDistances) {
+				maxR = std::max(maxR,it.r);
+				maxG = std::max(maxR,it.g);
+				maxB = std::max(maxR,it.b);
+			}
+			for(auto& it : rawDistances) {
+				it.r /= maxR;
+				it.g /= maxG;
+				it.b /= maxB;
+			}
+			for(int y = 0; y < newimg.height(); ++y) {
+				QRgb* scanline = reinterpret_cast<QRgb*>(newimg.scanLine(y));
+				const Rgb32f* rawScanline = &rawDistances[newimg.width()*y];
+				for(int x = 0; x < newimg.width(); ++x) {
+					const Rgb32f& rawPixel = rawScanline[x];
+					QColor qclr;
+					qclr.setRgbF(rawPixel.r,rawPixel.g,rawPixel.b,1.0f);
+					scanline[x] = qclr.rgb();
+				}
+			}
+			break;
+		}
+		case MSDFA:
+			break;
 	}
 	return newimg;
 }
@@ -721,6 +775,7 @@ void SDFGenerationArguments::fromArgs(const QVariantMap& args)
 			case QMetaType::QString: {
 				QString sdfTypeS = sdfType.toString();
 				if(!sdfTypeS.compare(SDF_MODE_KEY,Qt::CaseInsensitive)) this->type = SDFType::SDF;
+				else if(!sdfTypeS.compare(MSDF_MODE_KEY,Qt::CaseInsensitive)) this->type = SDFType::MSDF;
 				else if(!sdfTypeS.compare(MSDFA_MODE_KEY,Qt::CaseInsensitive)) this->type = SDFType::MSDFA;
 				else this->type = SDFType::SDF;
 				break;

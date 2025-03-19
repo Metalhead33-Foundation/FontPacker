@@ -15,6 +15,7 @@ const QString SOFTWARE_MODE_KEY = QStringLiteral("Software");
 const QString OPENGL_MODE_KEY = QStringLiteral("OpenGL");
 const QString OPENCL_MODE_KEY = QStringLiteral("OpenCL");
 const QString SDF_MODE_KEY = QStringLiteral("SDF");
+const QString MSDF_MODE_KEY = QStringLiteral("MSDF");
 const QString MSDFA_MODE_KEY = QStringLiteral("MSDFA");
 const QString MANHATTAN_MODE_KEY = QStringLiteral("Manhattan");
 const QString EUCLIDEAN_MODE_KEY = QStringLiteral("Euclidean");

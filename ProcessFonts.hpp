@@ -19,6 +19,7 @@ enum SDfGenerationMode {
 };
 enum SDFType {
 	SDF,
+	MSDF,
 	MSDFA
 };
 enum DistanceType {

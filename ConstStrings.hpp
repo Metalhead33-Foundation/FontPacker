@@ -17,6 +17,7 @@ extern const QString SOFTWARE_MODE_KEY;
 extern const QString OPENGL_MODE_KEY;
 extern const QString OPENCL_MODE_KEY;
 extern const QString SDF_MODE_KEY;
+extern const QString MSDF_MODE_KEY;
 extern const QString MSDFA_MODE_KEY;
 extern const QString MANHATTAN_MODE_KEY;
 extern const QString EUCLIDEAN_MODE_KEY;
