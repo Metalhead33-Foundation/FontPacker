@@ -63,6 +63,7 @@ public:
 	void modify(GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, QImage::Format imgFormat, const void * pixels);
 	void modify(GLsizei width, GLsizei height, const GlTextureFormat& format, const ScanlineIteratingFunction& scanlineGetter);
 	void modify(GLsizei width, GLsizei height, QImage::Format imgFormat, const ScanlineIteratingFunction& scanlineGetter);
+	void modify(const QImage& qimg);
 	void getTexture(const GlTextureFormat& format, void* pixels) const;
 	void getTexture(QImage::Format imgFormat, void* pixels) const;
 	void getTexture(void* pixels) const;

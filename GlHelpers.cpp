@@ -274,6 +274,11 @@ void GlTexture::modify(GLsizei width, GLsizei height, QImage::Format imgFormat, 
 	modify(width, height, format, scanlineGetter);
 }
 
+void GlTexture::modify(const QImage& qimg)
+{
+	modify(qimg.width(), qimg.height(), qimg.format(), [&qimg](GLsizei scanline) { return qimg.scanLine(scanline); } );
+}
+
 void GlTexture::getTexture(const GlTextureFormat& format, void* pixels) const
 {
 	bind();
