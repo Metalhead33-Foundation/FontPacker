@@ -1,0 +1,168 @@
+#include "SdfGenerationGL.hpp"
+#include "HugePreallocator.hpp"
+#include "qopenglextrafunctions.h"
+#include <QFile>
+#include <QTextStream>
+
+#if defined (_MSC_VER)
+#define STD140 __declspec(align(16))
+#elif defined(__GNUC__) || defined(__clang__)
+#define STD140 __attribute__((aligned(16)))
+#else
+#define STD140
+#endif
+
+struct STD140 UniformForCompute {
+	int32_t width, height;
+	int32_t padding[2];
+};
+struct Rgb32f {
+	float r, g, b, a;
+};
+struct Rgba8 {
+	uint8_t r, g, b, a;
+};
+
+SdfGenerationGL::SdfGenerationGL(const SDFGenerationArguments& args) {
+	QTextStream errStrm(stderr);
+	QSurfaceFormat fmt;
+	fmt.setDepthBufferSize(24);
+	if (QOpenGLContext::openGLModuleType() == QOpenGLContext::LibGL) {
+		qDebug("Requesting OpenGL 4.3 core context");
+		fmt.setVersion(4, 3);
+		fmt.setProfile(QSurfaceFormat::CoreProfile);
+	} else {
+		qDebug("Requesting OpenGL ES 3.2 context");
+		fmt.setVersion(3, 2);
+	}
+	glHelpers = std::make_unique<GlHelpers>();
+	glShader = std::make_unique<QOpenGLShaderProgram>();
+	if(!glShader->create()) throw std::runtime_error("Failed to create shader!");
+	QFile res(args.type == SDFType::SDF ? (args.distType == DistanceType::Euclidean ? ":/shader1.glsl" : ":/shader2.glsl") : ":/shader_msdf1.glsl");
+	if(res.open(QFile::ReadOnly)) {
+		QByteArray shdrArr = res.readAll();
+		if(!glShader->addCacheableShaderFromSourceCode(QOpenGLShader::Compute,shdrArr)) {
+			errStrm << glShader->log() << '\n';
+			errStrm.flush();
+			throw std::runtime_error("Failed to add shader!");
+		}
+		if(!glShader->link()) {
+			errStrm << glShader->log() << '\n';
+			errStrm.flush();
+			throw std::runtime_error("Failed to compile OpenGL shader!");
+		}
+	}
+}
+
+QImage SdfGenerationGL::produceSdf(const QImage& source, const SDFGenerationArguments& args)
+{
+	glPixelStorei( GL_PACK_ALIGNMENT, 1);
+	glPixelStorei(  GL_UNPACK_ALIGNMENT, 1);
+	QImage::Format finalImageFormat;
+	GlTextureFormat temporaryTextureFormat;
+	switch (args.type ) {
+		case SDF: finalImageFormat = QImage::Format_Grayscale8; temporaryTextureFormat = { GL_R32F, GL_RED, GL_FLOAT }; break;
+		case MSDF: finalImageFormat = QImage::Format_RGB888; temporaryTextureFormat = { GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE }; break;
+		case MSDFA: finalImageFormat = QImage::Format_RGBA8888; temporaryTextureFormat = { GL_RGBA32F, GL_RGBA, GL_FLOAT }; break;
+		default: break;
+	}
+
+	QImage newimg(source.width(), source.height(), finalImageFormat);
+	// Old Tex
+	GlTexture oldTex(source);
+	// New Tex
+	GlTexture newTex(newimg.width(),newimg.height(), temporaryTextureFormat );
+	// New Tex 2
+	GlTexture newTex2(newimg.width(),newimg.height(), { GL_R8, GL_RED, GL_UNSIGNED_BYTE } );
+	GlStorageBuffer uniformBuffer(glHelpers->glFuncs, glHelpers->extraFuncs);
+	UniformForCompute uniform;
+	uniform.width = args.samples_to_check_x ? args.samples_to_check_x / 2 : args.padding;
+	uniform.height = args.samples_to_check_y ? args.samples_to_check_y / 2 : args.padding;
+	uniformBuffer.initializeFrom(uniform);
+	glHelpers->glFuncs->glUseProgram(glShader->programId());
+	int fontUniform = glShader->uniformLocation("fontTexture");
+	int sdfUniform1 = glShader->uniformLocation("rawSdfTexture");
+	int sdfUniform2 = glShader->uniformLocation("isInsideTex");
+	int dimensionsUniform = glShader->uniformLocation("Dimensions");
+	oldTex.bindAsImage(glHelpers->extraFuncs, 0, GL_READ_ONLY);
+	glHelpers->glFuncs->glUniform1i(fontUniform,0);
+	newTex.bindAsImage(glHelpers->extraFuncs, 1, GL_WRITE_ONLY);
+	glHelpers->glFuncs->glUniform1i(sdfUniform1,1);
+	if(args.type == SDFType::SDF) {
+		newTex2.bindAsImage(glHelpers->extraFuncs, 2, GL_WRITE_ONLY);
+		glHelpers->glFuncs->glUniform1i(sdfUniform2,2);
+		uniformBuffer.bindBase(3);
+	}
+	glHelpers->extraFuncs->glUniformBlockBinding(glShader->programId(), dimensionsUniform, 3);
+	glHelpers->extraFuncs->glDispatchCompute(newimg.width(),newimg.height(),1);
+	glHelpers->extraFuncs->glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+	switch (args.type) {
+		case SDF: {
+			std::vector<uint8_t> areTheyInside = newTex2.getTextureAs<uint8_t>();
+			std::vector<float> rawDistances = newTex.getTextureAs<float>();
+			float maxDistIn = std::numeric_limits<float>::epsilon();
+			float maxDistOut = std::numeric_limits<float>::epsilon();
+			for(size_t i = 0; i < rawDistances.size(); ++i) {
+				if(areTheyInside[i]) {
+					maxDistIn = std::max(maxDistIn,rawDistances[i]);
+				} else {
+					maxDistOut = std::max(maxDistOut,rawDistances[i]);
+				}
+			}
+			for(size_t i = 0; i < rawDistances.size(); ++i) {
+				float& it = rawDistances[i];
+				if(areTheyInside[i]) {
+					it /= maxDistIn;
+					it = 0.5f + (it * 0.5f);
+				} else {
+					it /= maxDistOut;
+					it = 0.5f - (it * 0.5f);
+				}
+			}
+
+			for(int y = 0; y < newimg.height(); ++y) {
+				uchar* scanline = newimg.scanLine(y);
+				const float* rawScanline = &rawDistances[newimg.width()*y];
+				for(int x = 0; x < newimg.width(); ++x) {
+					scanline[x] = static_cast<uint8_t>(rawScanline[x] * 255.f);
+				}
+			}
+			break;
+		}
+		case MSDF: {
+			// We need HugePreallocator!
+			//std::vector<Rgb32f,Mallocator<Rgb32f>> rawDistances = newTex.getTextureAs<Rgb32f,Mallocator<Rgb32f>>();
+			std::vector<Rgba8,HugePreallocator<Rgba8>> rawDistances = newTex.getTextureAs<Rgba8,HugePreallocator<Rgba8>>();
+			/*float maxR = std::numeric_limits<float>::epsilon();
+			float maxG = std::numeric_limits<float>::epsilon();
+			float maxB = std::numeric_limits<float>::epsilon();
+			for(const auto& it : rawDistances) {
+				maxR = std::max(maxR,it.r);
+				maxG = std::max(maxR,it.g);
+				maxB = std::max(maxR,it.b);
+			}
+			for(auto& it : rawDistances) {
+				it.r /= maxR;
+				it.g /= maxG;
+				it.b /= maxB;
+			}*/
+			for(int y = 0; y < newimg.height(); ++y) {
+				QRgb* scanline = reinterpret_cast<QRgb*>(newimg.scanLine(y));
+				const Rgba8* rawScanline = &rawDistances[newimg.width()*y];
+				for(int x = 0; x < newimg.width(); ++x) {
+					const Rgba8& rawPixel = rawScanline[x];
+					QColor qclr;
+					qclr.setRgb(rawPixel.r, rawPixel.g, rawPixel.b, rawPixel.a );
+					//qclr.setRgbF(rawPixel.r,rawPixel.g,rawPixel.b,1.0f);
+					scanline[x] = qclr.rgb();
+				}
+			}
+			break;
+		}
+		case MSDFA:
+			break;
+		default: break;
+	}
+	return newimg;
+}

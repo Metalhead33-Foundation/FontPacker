@@ -19,7 +19,12 @@ SOURCES += \
         HugePreallocator.cpp \
         MainWindow.cpp \
         OpenGLCanvas.cpp \
-        ProcessFonts.cpp \
+        PreprocessedFontFace.cpp \
+        SDFGenerationArguments.cpp \
+        SdfGenerationContext.cpp \
+        SdfGenerationContextSoft.cpp \
+        SdfGenerationGL.cpp \
+        StoredCharacter.cpp \
         main.cpp
 
 # Default rules for deployment.
@@ -43,7 +48,12 @@ HEADERS += \
     MainWindow.hpp \
     Mallocator.hpp \
     OpenGLCanvas.hpp \
-    ProcessFonts.hpp
+    PreprocessedFontFace.hpp \
+    SDFGenerationArguments.hpp \
+    SdfGenerationContext.hpp \
+    SdfGenerationContextSoft.hpp \
+    SdfGenerationGL.hpp \
+    StoredCharacter.hpp
 
 RESOURCES += \
     resources.qrc

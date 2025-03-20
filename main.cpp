@@ -3,7 +3,9 @@
 #include <QTextStream>
 #include <QFile>
 #include "ConstStrings.hpp"
-#include "ProcessFonts.hpp"
+#include "SdfGenerationContext.hpp"
+#include "SdfGenerationGL.hpp"
+#include "SdfGenerationContextSoft.hpp"
 #include "MainWindow.hpp"
 
 QVariantMap parseArguments(int argc, char *argv[]);
@@ -19,7 +21,16 @@ int main(int argc, char *argv[])
 		strm.flush();
 		PreprocessedFontFace fontface;
 		if( args.contains( IN_FONT_KEY ) ) {
-			fontface.processFonts(args);
+			SDFGenerationArguments sdfArgs;
+			sdfArgs.fromArgs(args);
+			std::unique_ptr<SdfGenerationContext> ctx;
+			switch (sdfArgs.mode) {
+				case SOFTWARE: ctx = std::make_unique<SdfGenerationContextSoft>(); break;
+				case OPENGL_COMPUTE: ctx = std::make_unique<SdfGenerationGL>(sdfArgs); break;
+				case OPENCL: throw std::runtime_error("Unsupported mode!");
+					break;
+			}
+			ctx->processFont(fontface,sdfArgs);
 		}
 		else if( args.contains( IN_BIN_KEY ) ) {
 			QFile fil(args.value(IN_BIN_KEY).toString());

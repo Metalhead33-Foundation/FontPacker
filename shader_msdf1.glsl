@@ -2,7 +2,7 @@
 
 layout(local_size_x = 8, local_size_y = 8) in;
 layout (binding = 0, r8) readonly uniform image2D fontTexture;
-layout(binding = 1, rgba32f) uniform writeonly image2D rawSdfTexture;
+layout(binding = 1, rgba8) uniform writeonly image2D rawSdfTexture;
 
 layout (binding = 3, std140) uniform Dimensions {
     int intendedSampleWidth;

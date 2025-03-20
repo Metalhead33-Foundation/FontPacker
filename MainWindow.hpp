@@ -2,7 +2,7 @@
 #define MAINWINDOW_HPP
 #include <QMainWindow>
 #include "ConstStrings.hpp"
-#include "ProcessFonts.hpp"
+#include "PreprocessedFontFace.hpp"
 #include <memory>
 #include <vector>
 

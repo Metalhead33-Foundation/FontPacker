@@ -44,27 +44,27 @@ GLuint GlTexture::getTexId() const
 }
 
 GlTexture::GlTexture()
-	: width(0), height(0), format{0, 0, 0}
+	: texId(0), width(0), height(0), format{0, 0, 0}
 {
 	glGenTextures(1,&texId);
 }
 
 GlTexture::GlTexture(GLsizei width, GLsizei height, const GlTextureFormat& format, const void* data)
-	: width(width), height(height), format{ format }
+	: texId(0), width(width), height(height), format{ format }
 {
 	glGenTextures(1,&texId);
 	initialize(width, height, format, data);
 }
 
 GlTexture::GlTexture(GLsizei width, GLsizei height, QImage::Format imgFormat, const void* data)
-	: width(width), height(height), format{ getTextureFormat(imgFormat) }
+	: texId(0), width(width), height(height), format{ getTextureFormat(imgFormat) }
 {
 	glGenTextures(1,&texId);
 	initialize(width, height, format, data);
 }
 
 GlTexture::GlTexture(const QImage& image)
-	: width(image.width()), height(image.height()), format{ getTextureFormat(image.format()) }
+	: texId(0), width(image.width()), height(image.height()), format{ getTextureFormat(image.format()) }
 {
 	glGenTextures(1,&texId);
 	initialize(width, height, format, nullptr);
