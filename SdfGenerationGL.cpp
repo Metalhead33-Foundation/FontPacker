@@ -3,6 +3,7 @@
 #include "qopenglextrafunctions.h"
 #include <QFile>
 #include <QTextStream>
+#include <cassert>
 
 struct Rgb32f {
 	float r, g, b, a;
@@ -16,7 +17,7 @@ QImage::Format SdfGenerationGL::getFinalImageFormat(const SDFGenerationArguments
 {
 	switch (args.type ) {
 		case SDF: return QImage::Format_Grayscale8;
-		case MSDF: return QImage::Format_RGB888;
+		case MSDF: return QImage::Format_RGBA8888;
 		case MSDFA: return QImage::Format_RGBA8888;
 		default: return QImage::Format_Invalid;
 	}
@@ -29,6 +30,72 @@ GlTextureFormat SdfGenerationGL::getTemporaryTextureFormat(const SDFGenerationAr
 		case MSDF: return { GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE };
 		case MSDFA: return { GL_RGBA32F, GL_RGBA, GL_FLOAT };
 		default: return { -1, 0, 0 };
+	}
+}
+
+void SdfGenerationGL::fetchSdfFromGPU(QImage& newimg)
+{
+	std::vector<uint8_t> areTheyInside = newTex2.getTextureAs<uint8_t>();
+	std::vector<float> rawDistances = newTex.getTextureAs<float>();
+	float maxDistIn = std::numeric_limits<float>::epsilon();
+	float maxDistOut = std::numeric_limits<float>::epsilon();
+	for(size_t i = 0; i < rawDistances.size(); ++i) {
+		if(areTheyInside[i]) {
+			maxDistIn = std::max(maxDistIn,rawDistances[i]);
+		} else {
+			maxDistOut = std::max(maxDistOut,rawDistances[i]);
+		}
+	}
+	for(size_t i = 0; i < rawDistances.size(); ++i) {
+		float& it = rawDistances[i];
+		if(areTheyInside[i]) {
+			it /= maxDistIn;
+			it = 0.5f + (it * 0.5f);
+		} else {
+			it /= maxDistOut;
+			it = 0.5f - (it * 0.5f);
+		}
+	}
+
+	for(int y = 0; y < newimg.height(); ++y) {
+		uchar* scanline = newimg.scanLine(y);
+		const float* rawScanline = &rawDistances[newimg.width()*y];
+		for(int x = 0; x < newimg.width(); ++x) {
+			scanline[x] = static_cast<uint8_t>(rawScanline[x] * 255.f);
+		}
+	}
+}
+
+void SdfGenerationGL::fetchMSDFFromGPU(QImage& newimg)
+{
+	// We need HugePreallocator!
+	//std::vector<Rgb32f,Mallocator<Rgb32f>> rawDistances = newTex.getTextureAs<Rgb32f,Mallocator<Rgb32f>>();
+	std::vector<Rgba8,HugePreallocator<Rgba8>> rawDistances = newTex.getTextureAs<Rgba8,HugePreallocator<Rgba8>>();
+	//std::vector<Rgba8> rawDistances = newTex.getTextureAs<Rgba8>();
+	/*float maxR = std::numeric_limits<float>::epsilon();
+			float maxG = std::numeric_limits<float>::epsilon();
+			float maxB = std::numeric_limits<float>::epsilon();
+			for(const auto& it : rawDistances) {
+				maxR = std::max(maxR,it.r);
+				maxG = std::max(maxR,it.g);
+				maxB = std::max(maxR,it.b);
+			}
+			for(auto& it : rawDistances) {
+				it.r /= maxR;
+				it.g /= maxG;
+				it.b /= maxB;
+			}*/
+	for(int y = 0; y < newimg.height(); ++y) {
+		QRgb* scanline = reinterpret_cast<QRgb*>(newimg.scanLine(y));
+		const Rgba8* rawScanline = &rawDistances[newimg.width()*y];
+		for(int x = 0; x < newimg.width(); ++x) {
+			const Rgba8& rawPixel = rawScanline[x];
+			//QColor qclr;
+			//qclr.setRgb(rawPixel.r, rawPixel.g, rawPixel.b, rawPixel.a );
+			//qclr.setRgbF(rawPixel.r,rawPixel.g,rawPixel.b,1.0f);
+			//scanline[x] = qclr.rgb();
+			scanline[x] = qRgba(rawPixel.r, rawPixel.g, rawPixel.b, rawPixel.a);
+		}
 	}
 }
 /*
@@ -97,65 +164,11 @@ QImage SdfGenerationGL::produceSdf(const QImage& source, const SDFGenerationArgu
 	QImage newimg(args.internalProcessSize, args.internalProcessSize, finalImageFormat);
 	switch (args.type) {
 		case SDF: {
-			std::vector<uint8_t> areTheyInside = newTex2.getTextureAs<uint8_t>();
-			std::vector<float> rawDistances = newTex.getTextureAs<float>();
-			float maxDistIn = std::numeric_limits<float>::epsilon();
-			float maxDistOut = std::numeric_limits<float>::epsilon();
-			for(size_t i = 0; i < rawDistances.size(); ++i) {
-				if(areTheyInside[i]) {
-					maxDistIn = std::max(maxDistIn,rawDistances[i]);
-				} else {
-					maxDistOut = std::max(maxDistOut,rawDistances[i]);
-				}
-			}
-			for(size_t i = 0; i < rawDistances.size(); ++i) {
-				float& it = rawDistances[i];
-				if(areTheyInside[i]) {
-					it /= maxDistIn;
-					it = 0.5f + (it * 0.5f);
-				} else {
-					it /= maxDistOut;
-					it = 0.5f - (it * 0.5f);
-				}
-			}
-
-			for(int y = 0; y < newimg.height(); ++y) {
-				uchar* scanline = newimg.scanLine(y);
-				const float* rawScanline = &rawDistances[newimg.width()*y];
-				for(int x = 0; x < newimg.width(); ++x) {
-					scanline[x] = static_cast<uint8_t>(rawScanline[x] * 255.f);
-				}
-			}
+			fetchSdfFromGPU(newimg);
 			break;
 		}
 		case MSDF: {
-			// We need HugePreallocator!
-			//std::vector<Rgb32f,Mallocator<Rgb32f>> rawDistances = newTex.getTextureAs<Rgb32f,Mallocator<Rgb32f>>();
-			std::vector<Rgba8,HugePreallocator<Rgba8>> rawDistances = newTex.getTextureAs<Rgba8,HugePreallocator<Rgba8>>();
-			/*float maxR = std::numeric_limits<float>::epsilon();
-			float maxG = std::numeric_limits<float>::epsilon();
-			float maxB = std::numeric_limits<float>::epsilon();
-			for(const auto& it : rawDistances) {
-				maxR = std::max(maxR,it.r);
-				maxG = std::max(maxR,it.g);
-				maxB = std::max(maxR,it.b);
-			}
-			for(auto& it : rawDistances) {
-				it.r /= maxR;
-				it.g /= maxG;
-				it.b /= maxB;
-			}*/
-			for(int y = 0; y < newimg.height(); ++y) {
-				QRgb* scanline = reinterpret_cast<QRgb*>(newimg.scanLine(y));
-				const Rgba8* rawScanline = &rawDistances[newimg.width()*y];
-				for(int x = 0; x < newimg.width(); ++x) {
-					const Rgba8& rawPixel = rawScanline[x];
-					QColor qclr;
-					qclr.setRgb(rawPixel.r, rawPixel.g, rawPixel.b, rawPixel.a );
-					//qclr.setRgbF(rawPixel.r,rawPixel.g,rawPixel.b,1.0f);
-					scanline[x] = qclr.rgb();
-				}
-			}
+			fetchMSDFFromGPU(newimg);
 			break;
 		}
 		case MSDFA:

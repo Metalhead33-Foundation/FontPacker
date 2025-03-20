@@ -103,7 +103,7 @@ void SdfGenerationContext::processGlyph(StoredCharacter& output, FT_GlyphSlot gl
 	output.width = glyphSlot->bitmap.width;
 	output.height = glyphSlot->bitmap.rows;
 	output.bearing_x = glyphSlot->bitmap_left;
-	output.bearing_x = glyphSlot->bitmap_top;
+	output.bearing_y = glyphSlot->bitmap_top;
 	output.advance_x = glyphSlot->advance.x;
 	output.advance_y = glyphSlot->advance.y;
 
@@ -120,25 +120,10 @@ void SdfGenerationContext::processGlyph(StoredCharacter& output, FT_GlyphSlot gl
 	QImage oldImg = FTBitmap2QImage(glyphSlot->bitmap, args.internalProcessSize - (args.padding*2), args.internalProcessSize - (args.padding*2));
 	oldImg = producePaddedVariantOfImage(oldImg, padding);
 	QImage img = produceSdf(oldImg, args);
-	/*switch(args.mode) {
-		case SOFTWARE: {
-			QBitArray newBits = producePaddedVariant1bit(oldImg, padding);
-			img = produceSdfSoft(newBits, args.internalProcessSize, args.internalProcessSize, args);
-			break;
-		}
-		case OPENGL_COMPUTE: {
-			oldImg = producePaddedVariantOfImage(oldImg, padding);
-			img = produceSdfGL(oldImg,args);
-			break;
-		}
-		case OPENCL: {
-			throw std::runtime_error("Unsupported mode!");
-		}
-		default: {
-			throw std::runtime_error("Unsupported mode!");
-		}
-	}*/
-	if(args.intendedSize) img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio,Qt::SmoothTransformation);
+
+	if(args.intendedSize) {
+		img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio,Qt::SmoothTransformation);
+	}
 	buff.open(QIODevice::WriteOnly);
 	if(!img.save(&buff, args.jpeg ? "JPG" : "PNG",-1)) throw std::runtime_error("Failed to save image!");
 	buff.close();

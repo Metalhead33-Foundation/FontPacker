@@ -36,6 +36,8 @@ private:
 		int sdfUniform1;
 		int sdfUniform2;
 		int dimensionsUniform;
+		void fetchSdfFromGPU(QImage& newimg);
+		void fetchMSDFFromGPU(QImage& newimg);
 public:
 	SdfGenerationGL(const SDFGenerationArguments& args);
 	QImage produceSdf(const QImage& source, const SDFGenerationArguments& args) override;
