@@ -20,18 +20,18 @@ layout (binding = 3, std140) uniform Dimensions {
 // Function to calculate the distance to the nearest edge
 float calculateDistance(ivec2 threadId, ivec2 texSize, float maxDistance, bool isInside) {
     float minDistance = maxDistance;
-    for (int offsetY = -intendedSampleWidth; offsetY <= intendedSampleWidth; ++offsetY) {
-	for (int offsetX = -intendedSampleHeight; offsetX <= intendedSampleHeight; ++offsetX) {
-	    ivec2 samplePos = clamp(threadId + ivec2(offsetX, offsetY), ivec2(0, 0), texSize - ivec2(1));
-	    float pointSample = imageLoad(fontTexture, samplePos).r;
-	    bool isEdge = (pointSample > 0.5) != isInside;
-	    if (isEdge) {
+    for (int offsetY = -intendedSampleHeight; offsetY <= intendedSampleHeight; ++offsetY) {
+        for (int offsetX = -intendedSampleWidth; offsetX <= intendedSampleWidth; ++offsetX) {
+            ivec2 samplePos = clamp(threadId + ivec2(offsetX, offsetY), ivec2(0, 0), texSize - ivec2(1));
+            float pointSample = imageLoad(fontTexture, samplePos).r;
+            bool isEdge = (pointSample > 0.5) != isInside;
+            if (isEdge) {
                 float dist = abs(float(offsetX)) + abs(float(offsetY));
-		if (dist < minDistance) {
-		    minDistance = dist;
-		}
-	    }
-	}
+                if (dist < minDistance) {
+                    minDistance = dist;
+                }
+            }
+        }
     }
     return minDistance / maxDistance;
 }
@@ -40,7 +40,7 @@ void main() {
     ivec2 threadId = ivec2(gl_GlobalInvocationID.xy);
     ivec2 imageDimensions = imageSize(rawSdfTexture);
     if (threadId.x >= imageDimensions.x || threadId.y >= imageDimensions.y) {
-	return;
+        return;
     }
 
     float pixel = imageLoad(fontTexture, threadId).r;

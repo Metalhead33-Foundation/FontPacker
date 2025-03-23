@@ -1,171 +1,80 @@
-#version 430
+#version 430 core
 
-layout(local_size_x = 8, local_size_y = 8) in;
+layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// Input image texture
 layout (binding = 0, r8) readonly uniform image2D fontTexture;
-layout(binding = 1, rgba8) uniform writeonly image2D rawSdfTexture;
 
+// Output SDF texture
+layout (binding = 1, r32f) writeonly uniform image2D rawSdfTexture;
+layout (binding = 2, r8) writeonly uniform image2D isInsideTex;
+
+// Texture dimensions
 layout (binding = 3, std140) uniform Dimensions {
     int intendedSampleWidth;
     int intendedSampleHeight;
 };
 
-// Helper structure to store edge information
-struct Edge {
-    vec2 p1;
-    vec2 p2;
-    vec2 normal;
-    float angle;
-};
+#define MAX_SAMPLES_DIM 4
 
-// Get pixel value from bitmap (1.0 for inside, 0.0 for outside)
-float getBitmapValue(ivec2 pos) {
-    return imageLoad(fontTexture, pos).r > 0.5 ? 1.0 : 0.0;
-}
-
-// Check if a position is inside our texture bounds
-bool isInBounds(ivec2 pos) {
-    ivec2 dimensions = imageSize(fontTexture);
-    return pos.x >= 0 && pos.y >= 0 && pos.x < dimensions.x && pos.y < dimensions.y;
-}
-
-// Find the nearest edge to a given point
-Edge findNearestEdge(ivec2 pixelPos) {
-    ivec2 dimensions = imageSize(fontTexture);
-    float pixelValue = getBitmapValue(pixelPos);
-
-    // Initialize with an invalid edge
-    Edge nearestEdge;
-    nearestEdge.p1 = vec2(-1.0);
-    nearestEdge.p2 = vec2(-1.0);
-    float minDist = length(vec2(intendedSampleWidth, intendedSampleHeight));
-
-    // Search in a square area around the pixel
-    for (int y = -intendedSampleHeight; y <= intendedSampleHeight; y++) {
-        for (int x = -intendedSampleWidth; x <= intendedSampleWidth; x++) {
-            ivec2 checkPos = pixelPos + ivec2(x, y);
-
-            if (!isInBounds(checkPos)) continue;
-
-            float checkValue = getBitmapValue(checkPos);
-
-            // If we found a pixel with different value (inside/outside transition)
-            if (checkValue != pixelValue) {
-                // Check all 8 neighboring pixels of this edge pixel
-                for (int ny = -1; ny <= 1; ny++) {
-                    for (int nx = -1; nx <= 1; nx++) {
-                        if (nx == 0 && ny == 0) continue;
-
-                        ivec2 neighborPos = checkPos + ivec2(nx, ny);
-                        if (!isInBounds(neighborPos)) continue;
-
-                        float neighborValue = getBitmapValue(neighborPos);
-
-                        // If neighbor has different value, we found an edge
-                        if (neighborValue != checkValue) {
-                            // Create an edge between these two points
-                            vec2 p1 = vec2(checkPos) + 0.5;
-                            vec2 p2 = vec2(neighborPos) + 0.5;
-                            vec2 edgeDir = normalize(p2 - p1);
-                            vec2 edgeNormal = vec2(-edgeDir.y, edgeDir.x);
-                            float edgeAngle = atan(edgeDir.y, edgeDir.x);
-
-                            // Calculate distance from our original pixel to this edge
-                            vec2 toPixel = vec2(pixelPos) + 0.5 - p1;
-                            float dist = abs(dot(toPixel, edgeNormal));
-
-                            // Keep the nearest edge
-                            if (dist < minDist) {
-                                minDist = dist;
-                                nearestEdge.p1 = p1;
-                                nearestEdge.p2 = p2;
-                                nearestEdge.normal = edgeNormal;
-                                nearestEdge.angle = edgeAngle;
-                            }
-                        }
-                    }
-                }
+// Function to calculate the distance to the nearest edge
+vec3 calculateDistance(ivec2 threadId, ivec2 texSize, float maxDistance, bool isInside) {
+    vec3 minDistance = vec3(maxDistance,maxDistance,maxDistance);
+    // Calculate red channel - the closest edge in the horizontal (X-axis) direction.
+    for (int offsetX = -intendedSampleWidth; offsetX <= intendedSampleWidth; ++offsetX) {
+        ivec2 samplePos = clamp(threadId + ivec2(offsetX, 0), ivec2(0, 0), texSize - ivec2(1));
+        float pointSample = imageLoad(fontTexture, samplePos).r;
+        bool isEdge = (pointSample > 0.5) != isInside;
+        if (isEdge) {
+            float dist = length(vec2(offsetX, 0));
+            if (dist < minDistance.r) {
+                minDistance.r = dist;
             }
         }
     }
-
-    return nearestEdge;
-}
-
-// Calculate the minimum distance to an edge
-float computeDistance(vec2 pixel, Edge edge) {
-    vec2 lineVec = edge.p2 - edge.p1;
-    vec2 pointVec = pixel - edge.p1;
-
-    float t = clamp(dot(pointVec, lineVec) / dot(lineVec, lineVec), 0.0, 1.0);
-    vec2 projection = edge.p1 + t * lineVec;
-
-    return length(pixel - projection);
-}
-
-// Assign distance to appropriate color channel based on edge angle
-vec3 assignToChannels(float distance, float angle, bool isInside) {
-    float MAX_DISTANCE = length(vec2(intendedSampleWidth, intendedSampleHeight));
-    // Convert angle to positive range [0, 2π]
-    angle = mod(angle + 2.0 * 3.14159, 2.0 * 3.14159);
-
-    // Normalize distance to [0, 1] range
-    float normalizedDist = clamp(distance / MAX_DISTANCE, 0.0, 1.0);
-
-    // Apply sign based on whether pixel is inside or outside
-    float signedDist = isInside ? -normalizedDist : normalizedDist;
-
-    // Map to [0, 1] for storage in texture
-    float mappedDist = signedDist * 0.5 + 0.5;
-
-    // Determine which channels to store the distance in based on edge angle
-    // We use three 120° sectors:
-    // - Red: angles around 0° (horizontal edges)
-    // - Green: angles around 120° (diagonal edges)
-    // - Blue: angles around 240° (vertical edges)
-    vec3 channels = vec3(1.0);  // Initialize with max distance
-
-    if (angle < 2.0 * 3.14159 / 3.0) {
-        // First sector: primarily red
-        channels.r = mappedDist;
-    } else if (angle < 4.0 * 3.14159 / 3.0) {
-        // Second sector: primarily green
-        channels.g = mappedDist;
-    } else {
-        // Third sector: primarily blue
-        channels.b = mappedDist;
+    // Calculate green channel - the closest edge in the vertical (Y-axis) direction.
+    for (int offsetY = -intendedSampleHeight; offsetY <= intendedSampleHeight; ++offsetY) {
+        ivec2 samplePos = clamp(threadId + ivec2(0, offsetY), ivec2(0, 0), texSize - ivec2(1));
+        float pointSample = imageLoad(fontTexture, samplePos).r;
+        bool isEdge = (pointSample > 0.5) != isInside;
+        if (isEdge) {
+            float dist = length(vec2(0, offsetY));
+            if (dist < minDistance.g) {
+                minDistance.g = dist;
+            }
+        }
     }
-
-    return channels;
+    // Calculate blue channel - the closest edge in a diagonal direction
+    int maxStep = min(intendedSampleWidth,intendedSampleHeight);
+    for (int offset = -maxStep; offset <= maxStep; ++offset) {
+        ivec2 samplePos = clamp(threadId + ivec2(offset, offset), ivec2(0, 0), texSize - ivec2(1));
+        float pointSample = imageLoad(fontTexture, samplePos).r;
+        bool isEdge = (pointSample > 0.5) != isInside;
+        if (isEdge) {
+            float dist = length(vec2(offset, offset));
+            if (dist < minDistance.b) {
+                minDistance.b = dist;
+            }
+        }
+    }
+    return minDistance / maxDistance;
 }
 
 void main() {
-    // Get current pixel coordinates
-    ivec2 texCoord = ivec2(gl_GlobalInvocationID.xy);
-    ivec2 dimensions = imageSize(fontTexture);
-
-    // Skip if outside texture dimensions
-    if (texCoord.x >= dimensions.x || texCoord.y >= dimensions.y) {
+    ivec2 threadId = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 imageDimensions = imageSize(rawSdfTexture);
+    if (threadId.x >= imageDimensions.x || threadId.y >= imageDimensions.y) {
         return;
     }
 
-    // Check if pixel is inside or outside shape
-    bool isInside = getBitmapValue(texCoord) > 0.5;
+    float pixel = imageLoad(fontTexture, threadId).r;
+    float maxDistance = length(vec2(intendedSampleWidth, intendedSampleHeight));
+    bool isInside = pixel > 0.5;
+    vec3 sdfValue = calculateDistance(threadId, imageDimensions, maxDistance, isInside);
 
-    // Find nearest edge
-    Edge nearestEdge = findNearestEdge(texCoord);
+    // Normalize sdfValue to [-0.5, 0.5] range and then to [0, 1] later, in a separate pass on the CPU
 
-    if (nearestEdge.p1.x < 0) {
-        // No edge found within search radius, assign maximum distance
-        float value = isInside ? 0.0 : 1.0;  // 0.5 maps to 0 distance
-        imageStore(rawSdfTexture, texCoord, vec4(value, value, value, 1.0));
-    } else {
-        // Compute exact distance to edge
-        float distance = computeDistance(vec2(texCoord) + 0.5, nearestEdge);
-
-        // Assign distance to appropriate channels based on edge angle
-        vec3 msdfValues = assignToChannels(distance, nearestEdge.angle, isInside);
-
-        // Store result
-        imageStore(rawSdfTexture, texCoord, vec4(msdfValues, 1.0));
-    }
+    // Write the SDF value to the output texture
+    imageStore(rawSdfTexture, threadId, vec4(sdfValue, 1.0));
+    imageStore(isInsideTex, threadId, vec4(float(isInside), float(isInside), float(isInside), 1.0));
 }
