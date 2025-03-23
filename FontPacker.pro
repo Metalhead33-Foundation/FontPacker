@@ -15,6 +15,7 @@ DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs depr
 
 SOURCES += \
         ConstStrings.cpp \
+        FontOutlineDecompositionContext.cpp \
         GlHelpers.cpp \
         HugePreallocator.cpp \
         MainWindow.cpp \
@@ -39,10 +40,12 @@ DISTFILES += \
     screen.vert.glsl \
     shader1.glsl \
     shader2.glsl \
+    shader3.glsl \
     shader_msdf1.glsl
 
 HEADERS += \
     ConstStrings.hpp \
+    FontOutlineDecompositionContext.hpp \
     GlHelpers.hpp \
     HugePreallocator.hpp \
     MainWindow.hpp \

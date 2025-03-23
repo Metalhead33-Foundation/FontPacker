@@ -4,10 +4,13 @@
 #include <QOpenGLShaderProgram>
 #include <QOffscreenSurface>
 #include <QImage>
+#include <QOpenGLVersionFunctionsFactory>
+#include <QOpenGLFunctions_4_3_Core>
 #include <QImage>
 #include <QByteArray>
 #include <vector>
 #include <functional>
+#include <span>
 
 struct GlHelpers {
 private:
@@ -16,6 +19,7 @@ private:
 public:
 	QOpenGLFunctions* glFuncs;
 	QOpenGLExtraFunctions* extraFuncs;
+	QOpenGLFunctions_4_3_Core* gl43Funcs;
 	std::unique_ptr<QOpenGLContext> glContext;
 	std::unique_ptr<QOffscreenSurface> glSurface;
 	GlHelpers();
@@ -96,10 +100,16 @@ public:
 	void bind() const;
 	void bindBase(GLuint index) const;
 	void initialize(GLsizeiptr size, const void* data = nullptr);
+	template <typename T> void initializeFromSpan(const std::span<const T>& data) {
+		initialize(data.size_bytes(),data.data());
+	}
 	template <typename T> void initializeFrom(const T& data) {
 		initialize(sizeof(T), static_cast<const void*>(&data));
 	}
 	void modify(GLintptr offset, GLsizeiptr size, const void * data);
+	template <typename T> void modifyFromSpan(const std::span<const T>& data)  {
+		modify(0, sizeof(T), data.size_bytes(), data.data() );
+	}
 	template <typename T> void modifyFrom(const T& data) {
 		modify(0, sizeof(T), static_cast<const void*>(&data));
 	}

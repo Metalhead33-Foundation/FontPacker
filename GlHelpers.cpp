@@ -22,10 +22,11 @@ GlHelpers::GlHelpers()
 	if(!glContext->makeCurrent(glSurface.get())) throw std::runtime_error("Failed to make the context current!");
 	glFuncs = glContext->functions();
 	extraFuncs = glContext->extraFunctions();
+	gl43Funcs = dynamic_cast<QOpenGLFunctions_4_3_Core*>(QOpenGLVersionFunctionsFactory::get(QOpenGLVersionProfile(),glContext.get()));
 }
 
 GlHelpers::GlHelpers(GlHelpers&& mov)
-	: glFuncs(mov.glFuncs), extraFuncs(mov.extraFuncs), glContext(std::move(mov.glContext)), glSurface(std::move(mov.glSurface))
+	: glFuncs(mov.glFuncs), extraFuncs(mov.extraFuncs), glContext(std::move(mov.glContext)), glSurface(std::move(mov.glSurface)), gl43Funcs(mov.gl43Funcs)
 {
 }
 
@@ -35,6 +36,7 @@ GlHelpers& GlHelpers::operator=(GlHelpers&& mov)
 	this->extraFuncs = mov.extraFuncs;
 	this->glContext = std::move(mov.glContext);
 	this->glSurface = std::move(mov.glSurface);
+	this->gl43Funcs = mov.gl43Funcs;
 	return *this;
 }
 

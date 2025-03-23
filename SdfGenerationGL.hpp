@@ -26,11 +26,13 @@ private:
 		QImage::Format finalImageFormat;
 		GlTextureFormat temporaryTextureFormat;
 		std::unique_ptr<QOpenGLShaderProgram> glShader;
+		std::unique_ptr<QOpenGLShaderProgram> glShader2;
 		UniformForCompute uniform;
 		GlTexture oldTex;
 		GlTexture newTex;
 		GlTexture newTex2;
 		GlStorageBuffer uniformBuffer;
+		GlStorageBuffer ssboForEdges;
 
 		int fontUniform;
 		int sdfUniform1;
@@ -38,9 +40,14 @@ private:
 		int dimensionsUniform;
 		void fetchSdfFromGPU(QImage& newimg);
 		void fetchMSDFFromGPU(QImage& newimg);
+
+		int sdfUniform1_vec;
+		int sdfUniform2_vec;
+		int ssboUniform_vec;
 public:
 	SdfGenerationGL(const SDFGenerationArguments& args);
-	QImage produceSdf(const QImage& source, const SDFGenerationArguments& args) override;
+	QImage produceBitmapSdf(const QImage& source, const SDFGenerationArguments& args) override;
+	QImage produceOutlineSdf(const FontOutlineDecompositionContext& source, const SDFGenerationArguments& args) override;
 };
 
 #endif // SDFGENERATIONGL_HPP

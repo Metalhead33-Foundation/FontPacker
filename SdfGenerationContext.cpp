@@ -1,12 +1,32 @@
 #include "SdfGenerationContext.hpp"
-#include <harfbuzz/hb-ft.h>
 #include <stdexcept>
 #include <QTextStream>
-#include <ft2build.h>
 #include <cstdint>
 #include <QBuffer>
 #include <QBitArray>
-#include FT_FREETYPE_H
+
+/*
+	static int Outline_MoveToFunc(const FT_Vector* to, void* user);
+	static int Outline_LineToFunc(const FT_Vector* to, void* user );
+	static int Outline_ConicToFunc(const FT_Vector* control, const FT_Vector*  to, void* user);
+	static int Outline_CubicToFunc(const FT_Vector* control1, const FT_Vector* control2, const FT_Vector* to, void* user);
+
+	FT_Outline_MoveToFunc   move_to;
+	FT_Outline_LineToFunc   line_to;
+	FT_Outline_ConicToFunc  conic_to;
+	FT_Outline_CubicToFunc  cubic_to;
+
+	int                     shift;
+	FT_Pos                  delta;
+*/
+FT_Outline_Funcs outlineFuncs {
+	.move_to = SdfGenerationContext::Outline_MoveToFunc,
+	.line_to = SdfGenerationContext::Outline_LineToFunc,
+	.conic_to = SdfGenerationContext::Outline_ConicToFunc,
+	.cubic_to = SdfGenerationContext::Outline_CubicToFunc,
+	.shift = 0,
+	.delta = 0
+};
 
 double SdfGenerationContext::convert26_6ToDouble(int32_t fixedPointValue) {
 	// Extract the integer part by shifting right by 6 bits
@@ -39,7 +59,80 @@ double SdfGenerationContext::convert16_16ToDouble(int32_t fixedPointValue) {
 	return result;
 }
 
-SdfGenerationContext::SdfGenerationContext() {}
+int SdfGenerationContext::Outline_MoveToFunc(const FT_Vector* to, void* user)
+{
+	SdfGenerationContext* ctx = static_cast<SdfGenerationContext*>(user);
+	glm::fvec2 toConverted(convert26_6ToDouble(to->x), convert26_6ToDouble(to->y));
+	return ctx->decompositionContext.moveTo(toConverted);
+}
+
+int SdfGenerationContext::Outline_LineToFunc(const FT_Vector* to, void* user)
+{
+	SdfGenerationContext* ctx = static_cast<SdfGenerationContext*>(user);
+	glm::fvec2 toConverted(convert26_6ToDouble(to->x), convert26_6ToDouble(to->y));
+	return ctx->decompositionContext.lineTo(toConverted);
+}
+
+int SdfGenerationContext::Outline_ConicToFunc(const FT_Vector* control, const FT_Vector* to, void* user)
+{
+	SdfGenerationContext* ctx = static_cast<SdfGenerationContext*>(user);
+	glm::fvec2 controlConverted(convert26_6ToDouble(control->x), convert26_6ToDouble(control->y));
+	glm::fvec2 toConverted(convert26_6ToDouble(to->x), convert26_6ToDouble(to->y));
+	return ctx->decompositionContext.conicTo(controlConverted, toConverted);
+}
+
+int SdfGenerationContext::Outline_CubicToFunc(const FT_Vector* control1, const FT_Vector* control2, const FT_Vector* to, void* user)
+{
+	SdfGenerationContext* ctx = static_cast<SdfGenerationContext*>(user);
+	glm::fvec2 control1Converted(convert26_6ToDouble(control1->x), convert26_6ToDouble(control1->y));
+	glm::fvec2 control2Converted(convert26_6ToDouble(control2->x), convert26_6ToDouble(control2->y));
+	glm::fvec2 toConverted(convert26_6ToDouble(to->x), convert26_6ToDouble(to->y));
+	return ctx->decompositionContext.cubicTo(control1Converted, control2Converted, toConverted);
+}
+
+SdfGenerationContext::SdfGenerationContext() {
+	auto error = FT_Init_FreeType( &library );
+	if ( error ) {
+		throw std::runtime_error("An error occurred during library initialization!");
+	}
+}
+
+SdfGenerationContext::~SdfGenerationContext()
+{
+	FT_Done_FreeType( library );
+}
+
+void SdfGenerationContext::processOutlineGlyph(StoredCharacter& output, FT_GlyphSlot glyphSlot, const SDFGenerationArguments& args)
+{
+	if(decompositionContext.edges.size()) decompositionContext.edges.clear();
+	FT_Outline_Decompose(&glyphSlot->outline,&outlineFuncs,this);
+	decompositionContext.translateToNewSize(args.internalProcessSize,args.internalProcessSize,args.padding,args.padding);
+	// well then... what do we do now?
+	output.width = glyphSlot->bitmap.width;
+	output.height = glyphSlot->bitmap.rows;
+	output.bearing_x = glyphSlot->bitmap_left;
+	output.bearing_y = glyphSlot->bitmap_top;
+	output.advance_x = glyphSlot->advance.x;
+	output.advance_y = glyphSlot->advance.y;
+	output.metricWidth = convert26_6ToDouble(glyphSlot->metrics.width);
+	output.metricHeight = convert26_6ToDouble(glyphSlot->metrics.height);
+	output.horiBearingX = convert26_6ToDouble(glyphSlot->metrics.horiBearingX);
+	output.horiBearingY = convert26_6ToDouble(glyphSlot->metrics.horiBearingY);
+	output.horiAdvance = convert26_6ToDouble(glyphSlot->metrics.horiAdvance);
+	output.vertBearingX = convert26_6ToDouble(glyphSlot->metrics.vertBearingX);
+	output.vertBearingY = convert26_6ToDouble(glyphSlot->metrics.vertBearingY);
+	output.vertAdvance = convert26_6ToDouble(glyphSlot->metrics.vertAdvance);
+
+	QBuffer buff(&output.sdf);
+	QImage img = produceOutlineSdf(decompositionContext, args);
+
+	if(args.intendedSize) {
+		img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio,Qt::SmoothTransformation);
+	}
+	buff.open(QIODevice::WriteOnly);
+	if(!img.save(&buff, args.jpeg ? "JPG" : "PNG",-1)) throw std::runtime_error("Failed to save image!");
+	buff.close();
+}
 
 QImage SdfGenerationContext::producePaddedVariantOfImage(const QImage& glyph, unsigned padding) {
 	const unsigned width_padded = glyph.width() + (padding*2);
@@ -85,9 +178,8 @@ QImage SdfGenerationContext::FTBitmap2QImage(const FT_Bitmap_& bitmap, unsigned 
 	return toReturn;
 }
 
-void SdfGenerationContext::processGlyph(StoredCharacter& output, FT_GlyphSlot glyphSlot, const SDFGenerationArguments& args)
+void SdfGenerationContext::processBitmapGlyph(StoredCharacter& output, FT_GlyphSlot glyphSlot, const SDFGenerationArguments& args)
 {
-
 	auto error = FT_Render_Glyph( glyphSlot, FT_RENDER_MODE_NORMAL);
 	if ( error ) {
 		output.valid = false;
@@ -119,7 +211,7 @@ void SdfGenerationContext::processGlyph(StoredCharacter& output, FT_GlyphSlot gl
 	QBuffer buff(&output.sdf);
 	QImage oldImg = FTBitmap2QImage(glyphSlot->bitmap, args.internalProcessSize - (args.padding*2), args.internalProcessSize - (args.padding*2));
 	oldImg = producePaddedVariantOfImage(oldImg, padding);
-	QImage img = produceSdf(oldImg, args);
+	QImage img = produceBitmapSdf(oldImg, args);
 
 	if(args.intendedSize) {
 		img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio,Qt::SmoothTransformation);
@@ -138,14 +230,9 @@ void SdfGenerationContext::processFont(PreprocessedFontFace& output, const SDFGe
 	output.bitmap_padding = args.padding;
 	output.jpeg = args.jpeg;
 	unsigned to_scale = args.internalProcessSize - args.padding;
-	FT_Library library;
-	auto error = FT_Init_FreeType( &library );
-	if ( error ) {
-		throw std::runtime_error("An error occurred during library initialization!");
-	}
 	FT_Face face;
 	auto fpath = args.font_path.toStdString();
-	error = FT_New_Face( library, fpath.c_str(), 0, &face );
+	FT_Error error = FT_New_Face( library, fpath.c_str(), 0, &face );
 	if ( error == FT_Err_Unknown_File_Format )
 	{
 		throw std::runtime_error("The font file could be opened and read, but it appears that its font format is unsupported.");
@@ -166,16 +253,9 @@ void SdfGenerationContext::processFont(PreprocessedFontFace& output, const SDFGe
 	}
 	auto minChar = args.char_min;
 	auto maxChar = args.char_max;
-	/*switch(args.mode) {
-		case SOFTWARE: break;
-		case OPENGL_COMPUTE: {
-			break;
-		}
-		case OPENCL: {
-			break;
-		}
-		default: break;
-	}*/
+
+	auto fonttype = FT_Get_FSType_Flags(face);
+
 	QMap<uint32_t,uint32_t> charcodeToGlyphIndex;
 	QMap<uint32_t,uint32_t> glyphIndexToCharCode;
 	for(uint32_t charcode = minChar; charcode < maxChar; ++charcode) {
@@ -185,9 +265,12 @@ void SdfGenerationContext::processFont(PreprocessedFontFace& output, const SDFGe
 			glyphIndexToCharCode.insert(glyph_index,charcode);
 			error = FT_Load_Glyph(face,glyph_index,FT_LOAD_NO_BITMAP);
 			if ( error ) throw std::runtime_error("Failed to load glyph.");
-			StoredCharacter strdChr;
-			processGlyph(strdChr,face->glyph, args);
-			//strdChr.fromFreeTypeGlyph(face->glyph, args);
+			StoredCharacter strdChr{};
+			if(face->glyph->outline.n_contours && face->glyph->outline.n_points) {
+				processOutlineGlyph(strdChr,face->glyph, args);
+			} else {
+				processBitmapGlyph(strdChr,face->glyph, args);
+			}
 			output.storedCharacters.insert(charcode, strdChr);
 		}
 	}
@@ -210,5 +293,4 @@ void SdfGenerationContext::processFont(PreprocessedFontFace& output, const SDFGe
 	}
 
 	FT_Done_Face(face);
-	FT_Done_FreeType( library );
 }

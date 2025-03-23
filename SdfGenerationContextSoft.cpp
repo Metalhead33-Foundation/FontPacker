@@ -32,7 +32,7 @@ struct TmpStoredDist {
 	bool isInside;
 };
 
-QImage SdfGenerationContextSoft::produceSdf(const QImage& source, const SDFGenerationArguments& args)
+QImage SdfGenerationContextSoft::produceBitmapSdf(const QImage& source, const SDFGenerationArguments& args)
 {
 	const auto width = args.internalProcessSize;
 	const auto height = args.internalProcessSize;
@@ -126,4 +126,9 @@ QImage SdfGenerationContextSoft::produceSdf(const QImage& source, const SDFGener
 		}
 	}
 	return sdf;
+}
+
+QImage SdfGenerationContextSoft::produceOutlineSdf(const FontOutlineDecompositionContext& source, const SDFGenerationArguments& args)
+{
+
 }
