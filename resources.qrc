@@ -5,5 +5,6 @@
         <file>screen.vert.glsl</file>
         <file>shader_msdf1.glsl</file>
         <file>shader3.glsl</file>
+        <file>shader3_msdf.glsl</file>
     </qresource>
 </RCC>

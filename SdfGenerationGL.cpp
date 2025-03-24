@@ -139,7 +139,7 @@ SdfGenerationGL::SdfGenerationGL(const SDFGenerationArguments& args) :
 	}
 	glShader2 = std::make_unique<QOpenGLShaderProgram>();
 	{
-		QFile res(":/shader3.glsl");
+		QFile res(args.type == SDFType::SDF ? ":/shader3.glsl" : ":/shader3_msdf.glsl");
 		if(res.open(QFile::ReadOnly)) {
 			QByteArray shdrArr = res.readAll();
 			if(!glShader2->addCacheableShaderFromSourceCode(QOpenGLShader::Compute,shdrArr)) {
