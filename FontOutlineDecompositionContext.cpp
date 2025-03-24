@@ -2,6 +2,8 @@
 #include <climits>
 #include <cstring>
 #include <span>
+#include <cassert>
+#include <stdexcept>
 
 template<typename T> void zeroOut(std::span<T> data) {
 	std::memset(data.data(),0,data.size_bytes());
@@ -59,11 +61,25 @@ void FontOutlineDecompositionContext::translateToNewSize(unsigned int nWidth, un
 {
 	const unsigned widthWithoutPadding = nWidth - (2 * paddingX);
 	const unsigned heightWithoutPadding = nHeight - (2 * paddingY);
+	glm::fvec2 minDim(std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+	for(const auto& it : edges) {
+		for(const auto& jt : it.points) {
+			minDim.x = std::min(minDim.x,jt.x);
+			minDim.y = std::min(minDim.y,jt.y);
+		}
+	}
+	for(auto& it : edges) {
+		for(auto& jt : it.points) {
+			jt -= minDim;
+		}
+	}
 	glm::fvec2 maxDim(std::numeric_limits<float>::epsilon(), std::numeric_limits<float>::epsilon());
 	for(const auto& it : edges) {
 		for(const auto& jt : it.points) {
 			maxDim.x = std::max(maxDim.x,jt.x);
 			maxDim.y = std::max(maxDim.y,jt.y);
+			minDim.x = std::min(minDim.x,jt.x);
+			minDim.y = std::min(minDim.y,jt.y);
 		}
 	}
 	const float scaleX = static_cast<float>(widthWithoutPadding) / maxDim.x;
@@ -74,4 +90,23 @@ void FontOutlineDecompositionContext::translateToNewSize(unsigned int nWidth, un
 			jt.y = (jt.y * scaleY) + static_cast<float>(paddingY);
 		}
 	}
+	// Flip Y
+	for(auto& it : edges) {
+		for(auto& jt : it.points) {
+			jt.y = static_cast<float>(nHeight) - jt.y;
+		}
+	}
+}
+
+bool FontOutlineDecompositionContext::isWithinBoundingBox(unsigned int xOffset, unsigned int yOffset, unsigned int width, unsigned int height)
+{
+	for(const auto& it : edges) {
+		for(const auto& jt : it.points) {
+			if(jt.x > static_cast<float>(width)) throw std::runtime_error("We fall outside the given width!");
+			if(jt.y > static_cast<float>(height)) throw std::runtime_error("We fall outside the given height!");
+			if(jt.x < static_cast<float>(xOffset)) throw std::runtime_error("Why are we inside the horizontal padding?!");
+			if(jt.y < static_cast<float>(yOffset)) throw std::runtime_error("Why are we inside the vertical padding?!!");
+		}
+	}
+	return true;
 }
