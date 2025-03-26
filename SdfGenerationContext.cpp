@@ -104,6 +104,7 @@ SdfGenerationContext::~SdfGenerationContext()
 
 void SdfGenerationContext::processOutlineGlyph(StoredCharacter& output, FT_GlyphSlot glyphSlot, const SDFGenerationArguments& args)
 {
+	output.valid = true;
 	if(decompositionContext.edges.size()) decompositionContext.edges.clear();
 	FT_Outline_Decompose(&glyphSlot->outline,&outlineFuncs,this);
 	decompositionContext.translateToNewSize(args.internalProcessSize,args.internalProcessSize,args.padding,args.padding);

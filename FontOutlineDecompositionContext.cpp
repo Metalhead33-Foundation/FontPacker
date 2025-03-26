@@ -18,14 +18,79 @@ int FontOutlineDecompositionContext::moveTo(const glm::fvec2& to)
 	return 0;
 }
 
+/*
+enum LinePart {
+	LINE_P1 = 0,
+	LINE_P2 = 1
+};
+
+enum QuadraticPart {
+	QUADRATIC_P1 = 0,
+	QUADRATIC_CONTROL = 1,
+	QUADRATIC_P2 = 2
+};
+
+enum CubicPart {
+	CUBIC_P1 = 0,
+	CUBIC_CONTROL1 = 1,
+	CUBIC_CONTROL2 = 2,
+	CUBIC_P2 = 3
+};
+*/
+
+
+float EdgeSegment::getMinX() const
+{
+	switch (type) {
+		case LINEAR: return std::min(points[LINE_P1].x,points[LINE_P2].x);
+		case QUADRATIC: return std::min(points[QUADRATIC_P1].x,points[QUADRATIC_P2].x);
+		case CUBIC: return std::min(points[CUBIC_P1].x,points[CUBIC_P2].x);
+		default: return 0;
+			break;
+	}
+}
+
+float EdgeSegment::getMinY() const
+{
+	switch (type) {
+		case LINEAR: return std::min(points[LINE_P1].y,points[LINE_P2].y);
+		case QUADRATIC: return std::min(points[QUADRATIC_P1].y,points[QUADRATIC_P2].y);
+		case CUBIC: return std::min(points[CUBIC_P1].y,points[CUBIC_P2].y);
+		default: return 0;
+			break;
+	}
+}
+
+float EdgeSegment::getMaxX() const
+{
+	switch (type) {
+		case LINEAR: return std::max(points[LINE_P1].x,points[LINE_P2].x);
+		case QUADRATIC: return std::max(points[QUADRATIC_P1].x,points[QUADRATIC_P2].x);
+		case CUBIC: return std::max(points[CUBIC_P1].x,points[CUBIC_P2].x);
+		default: return 0;
+			break;
+	}
+}
+
+float EdgeSegment::getMaxY() const
+{
+	switch (type) {
+		case LINEAR: return std::max(points[LINE_P1].y,points[LINE_P2].y);
+		case QUADRATIC: return std::max(points[QUADRATIC_P1].y,points[QUADRATIC_P2].y);
+		case CUBIC: return std::max(points[CUBIC_P1].y,points[CUBIC_P2].y);
+		default: return 0;
+			break;
+	}
+}
+
 int FontOutlineDecompositionContext::lineTo(const glm::fvec2& to)
 {
 	edges.resize(edges.size() + 1);
 	auto& edge = edges.back();
 	edge.type = LINEAR;
 	zeroOut(edge.points);
-	edge.points[0] = curPos;
-	edge.points[1] = to;
+	edge.points[LINE_P1] = curPos;
+	edge.points[LINE_P2] = to;
 	curPos = to;
 	return 0;
 }
@@ -36,9 +101,9 @@ int FontOutlineDecompositionContext::conicTo(const glm::fvec2& control, const gl
 	auto& edge = edges.back();
 	edge.type = QUADRATIC;
 	zeroOut(edge.points);
-	edge.points[0] = curPos;
-	edge.points[1] = control;
-	edge.points[2] = to;
+	edge.points[QUADRATIC_P1] = curPos;
+	edge.points[QUADRATIC_CONTROL] = control;
+	edge.points[QUADRATIC_P2] = to;
 	curPos = to;
 	return 0;
 }
@@ -49,10 +114,10 @@ int FontOutlineDecompositionContext::cubicTo(const glm::fvec2& control1, const g
 	auto& edge = edges.back();
 	edge.type = CUBIC;
 	zeroOut(edge.points);
-	edge.points[0] = curPos;
-	edge.points[1] = control1;
-	edge.points[2] = control2;
-	edge.points[3] = to;
+	edge.points[CUBIC_P1] = curPos;
+	edge.points[CUBIC_CONTROL1] = control1;
+	edge.points[CUBIC_CONTROL2] = control2;
+	edge.points[CUBIC_P2] = to;
 	curPos = to;
 	return 0;
 }
@@ -68,6 +133,10 @@ void FontOutlineDecompositionContext::translateToNewSize(unsigned int nWidth, un
 			minDim.y = std::min(minDim.y,jt.y);
 		}
 	}
+	/*for(const auto& it : edges) {
+			minDim.x = std::min(minDim.x,it.getMinX() );
+			minDim.y = std::min(minDim.y,it.getMinY() );
+	}*/
 	for(auto& it : edges) {
 		for(auto& jt : it.points) {
 			jt -= minDim;
@@ -82,6 +151,10 @@ void FontOutlineDecompositionContext::translateToNewSize(unsigned int nWidth, un
 			minDim.y = std::min(minDim.y,jt.y);
 		}
 	}
+	/*for(const auto& it : edges) {
+		maxDim.x = std::min(maxDim.x,it.getMaxX() );
+		maxDim.y = std::min(maxDim.y,it.getMaxY() );
+	}*/
 	const float scaleX = static_cast<float>(widthWithoutPadding) / maxDim.x;
 	const float scaleY = static_cast<float>(heightWithoutPadding) / maxDim.y;
 	for(auto& it : edges) {
