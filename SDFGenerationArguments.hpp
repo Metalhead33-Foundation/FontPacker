@@ -32,6 +32,7 @@ struct SDFGenerationArguments {
 	uint32_t char_min;
 	uint32_t char_max;
 	bool jpeg;
+	bool forceRaster;
 	void fromArgs(const QVariantMap& args);
 };
 

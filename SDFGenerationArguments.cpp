@@ -13,6 +13,7 @@ const unsigned INTENDED_SIZE = 32;
 void SDFGenerationArguments::fromArgs(const QVariantMap& args)
 {
 	this->jpeg = args.contains(JPEG_KEY);
+	this->forceRaster = args.contains(FORCE_RASTER_KEY);
 	this->internalProcessSize = args.value(INTERNAL_PROCESS_SIZE_KEY, INTERNAL_RENDER_SIZE).toUInt();
 	this->intendedSize = args.value(INTENDED_SIZE_KEY, 0).toUInt();
 	this->padding = args.value(PADDING_KEY, PADDING).toUInt();
@@ -23,7 +24,7 @@ void SDFGenerationArguments::fromArgs(const QVariantMap& args)
 	this->font_path = args.value(IN_FONT_KEY, DEFAULT_FONT_PATH).toString();
 	// Mode
 	{
-		QVariant genMod = args.value(MODE_KEY,SOFTWARE_MODE_KEY);
+		QVariant genMod = args.value(MODE_KEY);
 		switch (genMod.typeId() ) {
 			case QMetaType::QString: {
 				QString genModS = genMod.toString();
@@ -51,7 +52,7 @@ void SDFGenerationArguments::fromArgs(const QVariantMap& args)
 	
 	// Type
 	{
-		QVariant sdfType = args.value(TYPE_KEY,SDF_MODE_KEY);
+		QVariant sdfType = args.value(TYPE_KEY);
 		switch (sdfType.typeId() ) {
 			case QMetaType::QString: {
 				QString sdfTypeS = sdfType.toString();
@@ -78,7 +79,7 @@ void SDFGenerationArguments::fromArgs(const QVariantMap& args)
 	
 	// Dist
 	{
-		QVariant distType = args.value(DIST_KEY,MANHATTAN_MODE_KEY);
+		QVariant distType = args.value(DIST_KEY);
 		switch (distType.typeId() ) {
 			case QMetaType::QString: {
 				QString distTypeS = distType.toString();
@@ -96,7 +97,7 @@ void SDFGenerationArguments::fromArgs(const QVariantMap& args)
 				break;
 			}
 			default: {
-				this->distType = DistanceType::Manhattan;;
+				this->distType = mode == SDfGenerationMode::SOFTWARE ? DistanceType::Manhattan : DistanceType::Euclidean;
 				break;
 			}
 		}

@@ -14,8 +14,12 @@ layout (binding = 3, std140) uniform Dimensions {
     int intendedSampleWidth;
     int intendedSampleHeight;
 };
-
-#define MAX_SAMPLES_DIM 4
+// Distance function macro
+#ifdef USE_MANHATTAN_DISTANCE
+    #define DISTANCE_FUNC(p1, p2) (abs((p1).x - (p2).x) + abs((p1).y - (p2).y))
+#else
+    #define DISTANCE_FUNC(p1, p2) length((p1) - (p2))
+#endif
 
 // Function to calculate the distance to the nearest edge
 float calculateDistance(ivec2 threadId, ivec2 texSize, float maxDistance, bool isInside) {
@@ -26,7 +30,11 @@ float calculateDistance(ivec2 threadId, ivec2 texSize, float maxDistance, bool i
             float pointSample = imageLoad(fontTexture, samplePos).r;
             bool isEdge = (pointSample > 0.5) != isInside;
             if (isEdge) {
+                #ifdef USE_MANHATTAN_DISTANCE
+                float dist = abs(float(offsetX)) + abs(float(offsetY));
+                #else
                 float dist = length(vec2(offsetX, offsetY));
+                #endif
                 if (dist < minDistance) {
                     minDistance = dist;
                 }
@@ -44,11 +52,15 @@ void main() {
     }
 
     float pixel = imageLoad(fontTexture, threadId).r;
+    #ifdef USE_MANHATTAN_DISTANCE
+    float maxDistance = abs(float(intendedSampleWidth)) + abs(float(intendedSampleHeight));
+    #else
     float maxDistance = length(vec2(intendedSampleWidth, intendedSampleHeight));
+    #endif
     bool isInside = pixel > 0.5;
     float sdfValue = calculateDistance(threadId, imageDimensions, maxDistance, isInside);
 
-    // Normalize sdfValue to [-0.5, 0.5] range and then to [0, 1]
+    // We do not normalize sdfValue to [-0.5, 0.5] or [0, 1] here - we do it in a separate pass on the CPU.
 
     // Write the SDF value to the output texture
     imageStore(rawSdfTexture, threadId, vec4(sdfValue, sdfValue, sdfValue, 1.0));

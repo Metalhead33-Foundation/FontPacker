@@ -44,6 +44,7 @@ private:
 		int sdfUniform1_vec;
 		int sdfUniform2_vec;
 		int ssboUniform_vec;
+		int dimensionsUniform_vec;
 public:
 	SdfGenerationGL(const SDFGenerationArguments& args);
 	QImage produceBitmapSdf(const QImage& source, const SDFGenerationArguments& args) override;

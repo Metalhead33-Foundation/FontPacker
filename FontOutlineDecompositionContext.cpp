@@ -18,27 +18,6 @@ int FontOutlineDecompositionContext::moveTo(const glm::fvec2& to)
 	return 0;
 }
 
-/*
-enum LinePart {
-	LINE_P1 = 0,
-	LINE_P2 = 1
-};
-
-enum QuadraticPart {
-	QUADRATIC_P1 = 0,
-	QUADRATIC_CONTROL = 1,
-	QUADRATIC_P2 = 2
-};
-
-enum CubicPart {
-	CUBIC_P1 = 0,
-	CUBIC_CONTROL1 = 1,
-	CUBIC_CONTROL2 = 2,
-	CUBIC_P2 = 3
-};
-*/
-
-
 float EdgeSegment::getMinX() const
 {
 	switch (type) {
@@ -133,7 +112,8 @@ void FontOutlineDecompositionContext::translateToNewSize(unsigned int nWidth, un
 			minDim.y = std::min(minDim.y,jt.y);
 		}
 	}
-	/*for(const auto& it : edges) {
+	/* Somehow, this makes everything black? So comment it out.
+	 * for(const auto& it : edges) {
 			minDim.x = std::min(minDim.x,it.getMinX() );
 			minDim.y = std::min(minDim.y,it.getMinY() );
 	}*/
@@ -147,11 +127,10 @@ void FontOutlineDecompositionContext::translateToNewSize(unsigned int nWidth, un
 		for(const auto& jt : it.points) {
 			maxDim.x = std::max(maxDim.x,jt.x);
 			maxDim.y = std::max(maxDim.y,jt.y);
-			minDim.x = std::min(minDim.x,jt.x);
-			minDim.y = std::min(minDim.y,jt.y);
 		}
 	}
-	/*for(const auto& it : edges) {
+	/* Somehow, this makes everything black? So comment it out.
+	 * for(const auto& it : edges) {
 		maxDim.x = std::min(maxDim.x,it.getMaxX() );
 		maxDim.y = std::min(maxDim.y,it.getMaxY() );
 	}*/
@@ -170,6 +149,42 @@ void FontOutlineDecompositionContext::translateToNewSize(unsigned int nWidth, un
 		}
 	}
 }
+
+void FontOutlineDecompositionContext::translateToNewSize(unsigned int nWidth, unsigned int nHeight,
+														 unsigned int paddingX, unsigned int paddingY,
+														 double metricWidth, double metricHeight,
+														 double horiBearingX, double horiBearingY)
+{
+	const unsigned widthWithoutPadding = nWidth - (2 * paddingX);
+	const unsigned heightWithoutPadding = nHeight - (2 * paddingY);
+
+	// Instead of using calculated minDim, use the glyph metrics for accurate placement
+	glm::fvec2 minDim(horiBearingX, horiBearingY - metricHeight); // Baseline correction
+	glm::fvec2 maxDim(minDim.x + metricWidth, minDim.y + metricHeight);
+
+	// Compute scaling factors based on known glyph metrics
+	const float scaleX = static_cast<float>(widthWithoutPadding) / static_cast<float>(metricWidth);
+	const float scaleY = static_cast<float>(heightWithoutPadding) / static_cast<float>(metricHeight);
+
+	for (auto& it : edges) {
+		for (auto& jt : it.points) {
+			// Align points relative to the bearing-based minDim
+			jt -= minDim;
+
+			// Scale proportionally
+			jt.x = (jt.x * scaleX) + static_cast<float>(paddingX);
+			jt.y = (jt.y * scaleY) + static_cast<float>(paddingY);
+		}
+	}
+
+	// Flip Y-axis to match OpenGL's coordinate system
+	for (auto& it : edges) {
+		for (auto& jt : it.points) {
+			jt.y = static_cast<float>(nHeight) - jt.y;
+		}
+	}
+}
+
 
 bool FontOutlineDecompositionContext::isWithinBoundingBox(unsigned int xOffset, unsigned int yOffset, unsigned int width, unsigned int height)
 {

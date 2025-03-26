@@ -46,6 +46,7 @@ struct FontOutlineDecompositionContext {
 	int conicTo(const glm::fvec2& control, const glm::fvec2&  to);
 	int cubicTo(const glm::fvec2& control1, const glm::fvec2& control2, const glm::fvec2& to);
 	void translateToNewSize(unsigned nWidth, unsigned nHeight, unsigned paddingX, unsigned paddingY);
+	void translateToNewSize(unsigned nWidth, unsigned nHeight, unsigned paddingX, unsigned paddingY, double metricWidth, double metricHeight, double horiBearingX, double horiBearingY);
 	bool isWithinBoundingBox(unsigned xOffset, unsigned yOffset, unsigned width, unsigned height);
 };
 

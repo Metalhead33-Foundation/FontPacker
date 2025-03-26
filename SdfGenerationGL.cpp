@@ -34,6 +34,11 @@ GlTextureFormat SdfGenerationGL::getTemporaryTextureFormat(const SDFGenerationAr
 	}
 }
 
+float gammaAdjust(float x) {
+	float d = x - 0.5f;
+	return 0.5f + 2.0f * d * d * d + 0.5f * d;
+}
+
 void SdfGenerationGL::fetchSdfFromGPU(QImage& newimg)
 {
 	std::vector<uint8_t> areTheyInside = newTex2.getTextureAs<uint8_t>();
@@ -56,6 +61,7 @@ void SdfGenerationGL::fetchSdfFromGPU(QImage& newimg)
 			it /= maxDistOut;
 			it = 0.5f - (it * 0.5f);
 		}
+		//it = gammaAdjust(it);
 	}
 
 	for(int y = 0; y < newimg.height(); ++y) {
@@ -122,9 +128,12 @@ SdfGenerationGL::SdfGenerationGL(const SDFGenerationArguments& args) :
 	glShader = std::make_unique<QOpenGLShaderProgram>();
 	if(!glShader->create()) throw std::runtime_error("Failed to create shader!");
 	{
-		QFile res(args.type == SDFType::SDF ? (args.distType == DistanceType::Euclidean ? ":/shader1.glsl" : ":/shader2.glsl") : ":/shader_msdf1.glsl");
+		QFile res(args.type == SDFType::SDF ? ":/shader1.glsl" : ":/shader_msdf1.glsl");
 		if(res.open(QFile::ReadOnly)) {
 			QByteArray shdrArr = res.readAll();
+			if(args.distType == DistanceType::Manhattan) {
+				shdrArr.insert(shdrArr.indexOf('\n')+1,QByteArrayLiteral("#define USE_MANHATTAN_DISTANCE\n"));
+			}
 			if(!glShader->addCacheableShaderFromSourceCode(QOpenGLShader::Compute,shdrArr)) {
 				errStrm << glShader->log() << '\n';
 				errStrm.flush();
@@ -142,6 +151,9 @@ SdfGenerationGL::SdfGenerationGL(const SDFGenerationArguments& args) :
 		QFile res(args.type == SDFType::SDF ? ":/shader3.glsl" : ":/shader3_msdf.glsl");
 		if(res.open(QFile::ReadOnly)) {
 			QByteArray shdrArr = res.readAll();
+			if(args.distType == DistanceType::Manhattan) {
+				shdrArr.insert(shdrArr.indexOf('\n')+1,QByteArrayLiteral("#define USE_MANHATTAN_DISTANCE\n"));
+			}
 			if(!glShader2->addCacheableShaderFromSourceCode(QOpenGLShader::Compute,shdrArr)) {
 				errStrm << glShader2->log() << '\n';
 				errStrm.flush();
@@ -166,6 +178,7 @@ SdfGenerationGL::SdfGenerationGL(const SDFGenerationArguments& args) :
 	sdfUniform1_vec = glShader2->uniformLocation("rawSdfTexture");
 	sdfUniform2_vec = glShader2->uniformLocation("isInsideTex");
 	ssboUniform_vec = glHelpers.extraFuncs->glGetProgramResourceIndex(glShader2->programId(), GL_SHADER_STORAGE_BLOCK, "EdgeBuffer");
+	dimensionsUniform_vec = glShader2->uniformLocation("Dimensions");
 }
 
 /*
@@ -221,8 +234,10 @@ QImage SdfGenerationGL::produceOutlineSdf(const FontOutlineDecompositionContext&
 	glHelpers.glFuncs->glUniform1i(sdfUniform1_vec,1);
 	newTex2.bindAsImage(glHelpers.extraFuncs, 2, GL_WRITE_ONLY);
 	glHelpers.glFuncs->glUniform1i(sdfUniform2_vec,2);
-	glHelpers.gl43Funcs->glShaderStorageBlockBinding(glShader2->programId(), ssboUniform_vec, 3);
 	ssboForEdges.bindBase(3);
+	uniformBuffer.bindBase(4);
+	glHelpers.gl43Funcs->glShaderStorageBlockBinding(glShader2->programId(), ssboUniform_vec, 3);
+	glHelpers.extraFuncs->glUniformBlockBinding(glShader->programId(), dimensionsUniform_vec, 4);
 	glHelpers.extraFuncs->glDispatchCompute(args.internalProcessSize,args.internalProcessSize,1);
 	glHelpers.extraFuncs->glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 	switch (args.type) {

@@ -51,3 +51,4 @@ const QString METRICSHEIGHT_KEY = QStringLiteral("metricsHeight");
 const QString HAS_VERT_KEY = QStringLiteral("hasVert");
 const QString KERNING_KEY = QStringLiteral("kerning");
 const QString JPEG_KEY = QStringLiteral("jpeg");
+const QString FORCE_RASTER_KEY = QStringLiteral("forceraster");

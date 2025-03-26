@@ -102,13 +102,61 @@ SdfGenerationContext::~SdfGenerationContext()
 	FT_Done_FreeType( library );
 }
 
+uint8_t round4Num(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+	uint32_t sum = static_cast<uint32_t>(r) + static_cast<uint32_t>(g) + static_cast<uint32_t>(b) + static_cast<uint32_t>(a);
+	return static_cast<uint8_t>( (sum + 2) / 4 );
+}
+
+QImage SdfGenerationContext::downsampleImageByAveraging(const QImage& src)
+{
+	QImage toReturn(src.width() / 2, src.height() / 2, src.format());
+	if(src.format() == QImage::Format_Grayscale8) {
+		for( int y = 0; y < toReturn.height(); ++y ) {
+			uchar* outputScanline = toReturn.scanLine(y);
+			const uchar* inputScanline0 = src.scanLine(y*2);
+			const uchar* inputScanline1 = src.scanLine( (y*2)+1 );
+			for ( int x = 0; x < toReturn.width() ; ++y ) {
+				uchar& output = outputScanline[x];
+				uchar in00 = inputScanline0[x*2];
+				uchar in01 = inputScanline0[(x*2)+1];
+				uchar in10 = inputScanline1[x*2];
+				uchar in11 = inputScanline1[(x*2)+1];
+				output = round4Num(in00,in01,in10,in11);
+			}
+		}
+	} else if (src.format() == QImage::Format_RGBA8888) {
+		// a
+	}
+	return toReturn;
+}
+
+QImage SdfGenerationContext::dowsanmpleImageByMaxing(const QImage& src)
+{
+	QImage toReturn(src.width() / 2, src.height() / 2, src.format());
+	if(src.format() == QImage::Format_Grayscale8) {
+		for( int y = 0; y < toReturn.height(); ++y ) {
+			uchar* outputScanline = toReturn.scanLine(y);
+			const uchar* inputScanline0 = src.scanLine(y*2);
+			const uchar* inputScanline1 = src.scanLine( (y*2)+1 );
+			for ( int x = 0; x < toReturn.width() ; ++y ) {
+				uchar& output = outputScanline[x];
+				uchar in00 = inputScanline0[x*2];
+				uchar in01 = inputScanline0[(x*2)+1];
+				uchar in10 = inputScanline1[x*2];
+				uchar in11 = inputScanline1[(x*2)+1];
+				output = std::max( std::max(in00,in01), std::max(in10,in11) );
+			}
+		}
+	} else if (src.format() == QImage::Format_RGBA8888) {
+		// a
+	}
+	return toReturn;
+}
+
 void SdfGenerationContext::processOutlineGlyph(StoredCharacter& output, FT_GlyphSlot glyphSlot, const SDFGenerationArguments& args)
 {
 	output.valid = true;
 	if(decompositionContext.edges.size()) decompositionContext.edges.clear();
-	FT_Outline_Decompose(&glyphSlot->outline,&outlineFuncs,this);
-	decompositionContext.translateToNewSize(args.internalProcessSize,args.internalProcessSize,args.padding,args.padding);
-	// well then... what do we do now?
 	output.width = glyphSlot->bitmap.width;
 	output.height = glyphSlot->bitmap.rows;
 	output.bearing_x = glyphSlot->bitmap_left;
@@ -123,6 +171,8 @@ void SdfGenerationContext::processOutlineGlyph(StoredCharacter& output, FT_Glyph
 	output.vertBearingX = convert26_6ToDouble(glyphSlot->metrics.vertBearingX);
 	output.vertBearingY = convert26_6ToDouble(glyphSlot->metrics.vertBearingY);
 	output.vertAdvance = convert26_6ToDouble(glyphSlot->metrics.vertAdvance);
+	FT_Outline_Decompose(&glyphSlot->outline,&outlineFuncs,this);
+	decompositionContext.translateToNewSize(args.internalProcessSize,args.internalProcessSize,args.padding,args.padding, output.metricWidth, output.metricHeight, output.horiBearingX, output.horiBearingY);
 
 	QBuffer buff(&output.sdf);
 	QImage img = produceOutlineSdf(decompositionContext, args);
@@ -179,6 +229,13 @@ QImage SdfGenerationContext::FTBitmap2QImage(const FT_Bitmap_& bitmap, unsigned 
 	return toReturn;
 }
 
+uint32_t nextPowerOf2(uint32_t n) {
+	if (n == 0) return 1;
+	int k = 31 - __builtin_clz(n);  // Highest bit position
+	if (n & (n - 1)) return 1U << (k + 1);  // Not a power of 2, shift up
+	return 1U << k;  // Already a power of 2
+}
+
 void SdfGenerationContext::processBitmapGlyph(StoredCharacter& output, FT_GlyphSlot glyphSlot, const SDFGenerationArguments& args)
 {
 	auto error = FT_Render_Glyph( glyphSlot, FT_RENDER_MODE_NORMAL);
@@ -215,7 +272,13 @@ void SdfGenerationContext::processBitmapGlyph(StoredCharacter& output, FT_GlyphS
 	QImage img = produceBitmapSdf(oldImg, args);
 
 	if(args.intendedSize) {
-		img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio,Qt::SmoothTransformation);
+		unsigned integerScale = args.internalProcessSize / args.intendedSize;
+		unsigned powerOfTwoTargeet = nextPowerOf2(args.intendedSize);
+		int steps = __builtin_clz(powerOfTwoTargeet) - __builtin_clz(args.internalProcessSize);
+		for(int i = 0; i < steps; ++i) {
+			img = dowsanmpleImageByMaxing(img);
+		}
+		img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
 	}
 	buff.open(QIODevice::WriteOnly);
 	if(!img.save(&buff, args.jpeg ? "JPG" : "PNG",-1)) throw std::runtime_error("Failed to save image!");
@@ -267,7 +330,7 @@ void SdfGenerationContext::processFont(PreprocessedFontFace& output, const SDFGe
 			error = FT_Load_Glyph(face,glyph_index,FT_LOAD_NO_BITMAP);
 			if ( error ) throw std::runtime_error("Failed to load glyph.");
 			StoredCharacter strdChr{};
-			if(face->glyph->outline.n_contours && face->glyph->outline.n_points) {
+			if( (face->glyph->outline.n_contours && face->glyph->outline.n_points) && !args.forceRaster ) {
 				processOutlineGlyph(strdChr,face->glyph, args);
 			} else {
 				processBitmapGlyph(strdChr,face->glyph, args);

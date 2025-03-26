@@ -20,6 +20,8 @@ protected:
 public:
 	SdfGenerationContext();
 	virtual ~SdfGenerationContext();
+	static QImage downsampleImageByAveraging(const QImage& src);
+	static QImage dowsanmpleImageByMaxing(const QImage& src);
 	virtual QImage produceBitmapSdf(const QImage& source, const SDFGenerationArguments& args) = 0;
 	virtual QImage produceOutlineSdf(const FontOutlineDecompositionContext& source, const SDFGenerationArguments& args) = 0;
 	void processOutlineGlyph(StoredCharacter& output, FT_GlyphSlot glyphSlot, const SDFGenerationArguments& args);

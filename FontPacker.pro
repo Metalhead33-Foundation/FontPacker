@@ -39,7 +39,6 @@ DISTFILES += \
     README.md \
     screen.vert.glsl \
     shader1.glsl \
-    shader2.glsl \
     shader3.glsl \
     shader3_msdf.glsl \
     shader_msdf1.glsl

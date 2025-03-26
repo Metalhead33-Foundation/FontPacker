@@ -124,7 +124,7 @@ uniform sampler2D sdf_tex;
 void main()
 {
     float sdfValue = texture(sdf_tex, TexCoords).r;
-    FragColor = vec4(TexCoords.x, TexCoords.y, 1.0, sdfValue); 
+    FragColor = vec4(TexCoords.x, TexCoords.y, 1.0, smoothstep(0.49,0.51,sdfValue) ); 
 }</string>
       </property>
      </widget>
