@@ -52,3 +52,6 @@ const QString HAS_VERT_KEY = QStringLiteral("hasVert");
 const QString KERNING_KEY = QStringLiteral("kerning");
 const QString JPEG_KEY = QStringLiteral("jpeg");
 const QString FORCE_RASTER_KEY = QStringLiteral("forceraster");
+const QString GAMMA_CORRECT_KEY = QStringLiteral("gammacorrect");
+const QString MIDPOINT_ADJUSTMENT_KEY = QStringLiteral("midpointadjustment");
+const QString MAXIMIZE_INSTEAD_OF_AVERAGE_KEY = QStringLiteral("maximizeinsteadofaverage");

@@ -275,10 +275,16 @@ void SdfGenerationContext::processBitmapGlyph(StoredCharacter& output, FT_GlyphS
 		unsigned integerScale = args.internalProcessSize / args.intendedSize;
 		unsigned powerOfTwoTargeet = nextPowerOf2(args.intendedSize);
 		int steps = __builtin_clz(powerOfTwoTargeet) - __builtin_clz(args.internalProcessSize);
-		for(int i = 0; i < steps; ++i) {
-			img = dowsanmpleImageByMaxing(img);
+		if(args.maximizeInsteadOfAverage) {
+			for(int i = 0; i < steps; ++i) {
+				img = dowsanmpleImageByMaxing(img);
+			}
+		} else {
+			for(int i = 0; i < steps; ++i) {
+				img = downsampleImageByAveraging(img);
+			}
 		}
-		img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+		if(img.width() != args.intendedSize) img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
 	}
 	buff.open(QIODevice::WriteOnly);
 	if(!img.save(&buff, args.jpeg ? "JPG" : "PNG",-1)) throw std::runtime_error("Failed to save image!");

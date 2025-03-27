@@ -39,7 +39,7 @@ float gammaAdjust(float x) {
 	return 0.5f + 2.0f * d * d * d + 0.5f * d;
 }
 
-void SdfGenerationGL::fetchSdfFromGPU(QImage& newimg)
+void SdfGenerationGL::fetchSdfFromGPU(QImage& newimg, const SDFGenerationArguments& args)
 {
 	std::vector<uint8_t> areTheyInside = newTex2.getTextureAs<uint8_t>();
 	std::vector<float> rawDistances = newTex.getTextureAs<float>();
@@ -61,7 +61,19 @@ void SdfGenerationGL::fetchSdfFromGPU(QImage& newimg)
 			it /= maxDistOut;
 			it = 0.5f - (it * 0.5f);
 		}
-		//it = gammaAdjust(it);
+	}
+	if(args.midpointAdjustment.has_value()) {
+		float toDivideWith = args.midpointAdjustment.value_or(1.0f);
+		for(size_t i = 0; i < rawDistances.size(); ++i) {
+			float& it = rawDistances[i];
+			it = std::clamp(it/toDivideWith,0.0f,1.0f);
+		}
+	}
+	if(args.gammaCorrect) {
+		for(size_t i = 0; i < rawDistances.size(); ++i) {
+			float& it = rawDistances[i];
+			it = gammaAdjust(it);
+		}
 	}
 
 	for(int y = 0; y < newimg.height(); ++y) {
@@ -73,7 +85,13 @@ void SdfGenerationGL::fetchSdfFromGPU(QImage& newimg)
 	}
 }
 
-void SdfGenerationGL::fetchMSDFFromGPU(QImage& newimg)
+/*
+	bool gammaCorrect;
+	bool maximizeInsteadOfAverage;
+	std::optional<float> midpointAdjustment;
+*/
+
+void SdfGenerationGL::fetchMSDFFromGPU(QImage& newimg, const SDFGenerationArguments& args)
 {
 	std::vector<uint8_t> areTheyInside = newTex2.getTextureAs<uint8_t>();
 	// We need HugePreallocator!
@@ -208,11 +226,11 @@ QImage SdfGenerationGL::produceBitmapSdf(const QImage& source, const SDFGenerati
 	QImage newimg(args.internalProcessSize, args.internalProcessSize, finalImageFormat);
 	switch (args.type) {
 		case SDF: {
-			fetchSdfFromGPU(newimg);
+			fetchSdfFromGPU(newimg,args);
 			break;
 		}
 		case MSDF: {
-			fetchMSDFFromGPU(newimg);
+			fetchMSDFFromGPU(newimg,args);
 			break;
 		}
 		case MSDFA:
@@ -242,11 +260,11 @@ QImage SdfGenerationGL::produceOutlineSdf(const FontOutlineDecompositionContext&
 	glHelpers.extraFuncs->glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 	switch (args.type) {
 		case SDF: {
-			fetchSdfFromGPU(newimg);
+			fetchSdfFromGPU(newimg,args);
 			break;
 		}
 		case MSDF: {
-			fetchMSDFFromGPU(newimg);
+			fetchMSDFFromGPU(newimg,args);
 			break;
 		}
 		case MSDFA:

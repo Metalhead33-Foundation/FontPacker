@@ -10,10 +10,18 @@ const unsigned PADDING = 100;
 #endif
 const unsigned INTENDED_SIZE = 32;
 
+/*
+extern const QString GAMMA_CORRECT_KEY;
+extern const QString MIDPOINT_ADJUSTMENT_KEY;
+extern const QString MAXIMIZE_INSTEAD_OF_AVERAGE_KEY;
+*/
+
 void SDFGenerationArguments::fromArgs(const QVariantMap& args)
 {
 	this->jpeg = args.contains(JPEG_KEY);
 	this->forceRaster = args.contains(FORCE_RASTER_KEY);
+	this->gammaCorrect = args.contains(GAMMA_CORRECT_KEY);
+	this->maximizeInsteadOfAverage = args.contains(MAXIMIZE_INSTEAD_OF_AVERAGE_KEY);
 	this->internalProcessSize = args.value(INTERNAL_PROCESS_SIZE_KEY, INTERNAL_RENDER_SIZE).toUInt();
 	this->intendedSize = args.value(INTENDED_SIZE_KEY, 0).toUInt();
 	this->padding = args.value(PADDING_KEY, PADDING).toUInt();
@@ -22,6 +30,40 @@ void SDFGenerationArguments::fromArgs(const QVariantMap& args)
 	this->char_min = args.value(CHAR_MIN_KEY, 0).toUInt();
 	this->char_max = args.value(CHAR_MAX_KEY, 0xE007F).toUInt();
 	this->font_path = args.value(IN_FONT_KEY, DEFAULT_FONT_PATH).toString();
+	// Midpoint bias
+	if(args.contains(MIDPOINT_ADJUSTMENT_KEY)) {
+		QVariant midpointAdj = args.value(MIDPOINT_ADJUSTMENT_KEY);
+		switch (midpointAdj.typeId() ) {
+			case QMetaType::QString: {
+				QString midpointAdjStr = midpointAdj.toString();
+				this->midpointAdjustment = midpointAdjStr.toFloat();
+				break;
+			}
+			case QMetaType::Int: {
+				this->midpointAdjustment = static_cast<float>(midpointAdj.toInt());
+				break;
+			}
+			case QMetaType::UInt: {
+				this->midpointAdjustment = static_cast<float>(midpointAdj.toUInt());
+				break;
+			}
+			case QMetaType::Float: {
+				this->midpointAdjustment = midpointAdj.toFloat();
+				break;
+			}
+			case QMetaType::Double: {
+				this->midpointAdjustment = static_cast<float>(midpointAdj.toDouble());
+				break;
+			}
+			default: {
+				this->midpointAdjustment = {};
+				break;
+			}
+			}
+	} else {
+		this->midpointAdjustment = {};
+	}
+
 	// Mode
 	{
 		QVariant genMod = args.value(MODE_KEY);

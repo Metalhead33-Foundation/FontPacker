@@ -54,5 +54,8 @@ extern const QString HAS_VERT_KEY;
 extern const QString KERNING_KEY;
 extern const QString JPEG_KEY;
 extern const QString FORCE_RASTER_KEY;
+extern const QString GAMMA_CORRECT_KEY;
+extern const QString MIDPOINT_ADJUSTMENT_KEY;
+extern const QString MAXIMIZE_INSTEAD_OF_AVERAGE_KEY;
 
 #endif // CONSTSTRINGS_HPP

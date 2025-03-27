@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <QVariant>
+#include <optional>
 
 enum SDfGenerationMode {
 	SOFTWARE,
@@ -33,6 +34,9 @@ struct SDFGenerationArguments {
 	uint32_t char_max;
 	bool jpeg;
 	bool forceRaster;
+	bool gammaCorrect;
+	bool maximizeInsteadOfAverage;
+	std::optional<float> midpointAdjustment;
 	void fromArgs(const QVariantMap& args);
 };
 

@@ -38,8 +38,8 @@ private:
 		int sdfUniform1;
 		int sdfUniform2;
 		int dimensionsUniform;
-		void fetchSdfFromGPU(QImage& newimg);
-		void fetchMSDFFromGPU(QImage& newimg);
+		void fetchSdfFromGPU(QImage& newimg, const SDFGenerationArguments& args);
+		void fetchMSDFFromGPU(QImage& newimg, const SDFGenerationArguments& args);
 
 		int sdfUniform1_vec;
 		int sdfUniform2_vec;
