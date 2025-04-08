@@ -100,6 +100,7 @@ void SdfGenerationGL::fetchMSDFFromGPU(QImage& newimg, const SDFGenerationArgume
 	//std::vector<Rgba8> rawDistances = newTex.getTextureAs<Rgba8>();
 	glm::fvec3 maxDistIn(std::numeric_limits<float>::epsilon());
 	glm::fvec3 maxDistOut(std::numeric_limits<float>::epsilon());
+
 	for(size_t i = 0; i < rawDistances.size(); ++i) {
 		if(areTheyInside[i]) {
 			maxDistIn.r = std::max(maxDistIn.r, std::abs(rawDistances[i].r) );
@@ -110,6 +111,9 @@ void SdfGenerationGL::fetchMSDFFromGPU(QImage& newimg, const SDFGenerationArgume
 			maxDistOut.g = std::max(maxDistOut.g, std::abs(rawDistances[i].g) );
 			maxDistOut.b = std::max(maxDistOut.b, std::abs(rawDistances[i].b) );
 		}
+		/*maxDistIn.r = std::max(maxDistIn.r, std::abs(rawDistances[i].r) );
+		maxDistIn.g = std::max(maxDistIn.g, std::abs(rawDistances[i].g) );
+		maxDistIn.b = std::max(maxDistIn.b, std::abs(rawDistances[i].b) );*/
 	}
 	for(size_t i = 0; i < rawDistances.size(); ++i) {
 		glm::fvec4& it = rawDistances[i];
@@ -120,6 +124,10 @@ void SdfGenerationGL::fetchMSDFFromGPU(QImage& newimg, const SDFGenerationArgume
 			it /= glm::fvec4(maxDistOut,1.0f);
 			it = 0.5f - (it * 0.5f);
 		}
+		/*it /= glm::fvec4(maxDistIn,1.0f);
+		it.r = 1.0f - it.r;
+		it.g = 1.0f - it.g;
+		it.b = 1.0f - it.b;*/
 	}
 	for(int y = 0; y < newimg.height(); ++y) {
 		QRgb* scanline = reinterpret_cast<QRgb*>(newimg.scanLine(y));

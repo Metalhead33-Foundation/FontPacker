@@ -1,5 +1,6 @@
 #ifndef FONTOUTLINEDECOMPOSITIONCONTEXT_HPP
 #define FONTOUTLINEDECOMPOSITIONCONTEXT_HPP
+#include <functional>
 #include <glm/glm.hpp>
 #include <cstdint>
 #include <array>
@@ -41,6 +42,8 @@ struct EdgeSegment {
 };
 
 struct FontOutlineDecompositionContext {
+	typedef std::vector<std::vector<size_t>> IdShapeMap;
+	typedef std::function<void(const IdShapeMap&)> IdShapeMapIterator;
 	glm::fvec2 curPos;
 	std::vector<EdgeSegment> edges;
 	int32_t curShapeId = 0;
@@ -51,6 +54,8 @@ struct FontOutlineDecompositionContext {
 	void translateToNewSize(unsigned nWidth, unsigned nHeight, unsigned paddingX, unsigned paddingY);
 	void translateToNewSize(unsigned nWidth, unsigned nHeight, unsigned paddingX, unsigned paddingY, double metricWidth, double metricHeight, double horiBearingX, double horiBearingY);
 	bool isWithinBoundingBox(unsigned xOffset, unsigned yOffset, unsigned width, unsigned height);
+	void iterateOverContours(const IdShapeMapIterator& shapeIterator) const;
+	void assignColours();
 };
 
 #endif // FONTOUTLINEDECOMPOSITIONCONTEXT_HPP

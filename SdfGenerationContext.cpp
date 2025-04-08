@@ -173,6 +173,7 @@ void SdfGenerationContext::processOutlineGlyph(StoredCharacter& output, FT_Glyph
 	output.vertAdvance = convert26_6ToDouble(glyphSlot->metrics.vertAdvance);
 	FT_Outline_Decompose(&glyphSlot->outline,&outlineFuncs,this);
 	decompositionContext.translateToNewSize(args.internalProcessSize,args.internalProcessSize,args.padding,args.padding, output.metricWidth, output.metricHeight, output.horiBearingX, output.horiBearingY);
+	decompositionContext.assignColours();
 
 	QBuffer buff(&output.sdf);
 	QImage img = produceOutlineSdf(decompositionContext, args);
@@ -272,19 +273,23 @@ void SdfGenerationContext::processBitmapGlyph(StoredCharacter& output, FT_GlyphS
 	QImage img = produceBitmapSdf(oldImg, args);
 
 	if(args.intendedSize) {
-		unsigned integerScale = args.internalProcessSize / args.intendedSize;
-		unsigned powerOfTwoTargeet = nextPowerOf2(args.intendedSize);
-		int steps = __builtin_clz(powerOfTwoTargeet) - __builtin_clz(args.internalProcessSize);
-		if(args.maximizeInsteadOfAverage) {
-			for(int i = 0; i < steps; ++i) {
-				img = dowsanmpleImageByMaxing(img);
+		if( img.format() == QImage::Format_Grayscale8 ) {
+			unsigned integerScale = args.internalProcessSize / args.intendedSize;
+			unsigned powerOfTwoTargeet = nextPowerOf2(args.intendedSize);
+			int steps = __builtin_clz(powerOfTwoTargeet) - __builtin_clz(args.internalProcessSize);
+			if(args.maximizeInsteadOfAverage) {
+				for(int i = 0; i < steps; ++i) {
+					img = dowsanmpleImageByMaxing(img);
+				}
+			} else {
+				for(int i = 0; i < steps; ++i) {
+					img = downsampleImageByAveraging(img);
+				}
 			}
+			if(img.width() != args.intendedSize) img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
 		} else {
-			for(int i = 0; i < steps; ++i) {
-				img = downsampleImageByAveraging(img);
-			}
+			img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
 		}
-		if(img.width() != args.intendedSize) img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
 	}
 	buff.open(QIODevice::WriteOnly);
 	if(!img.save(&buff, args.jpeg ? "JPG" : "PNG",-1)) throw std::runtime_error("Failed to save image!");

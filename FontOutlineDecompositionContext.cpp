@@ -202,3 +202,43 @@ bool FontOutlineDecompositionContext::isWithinBoundingBox(unsigned int xOffset, 
 	}
 	return true;
 }
+
+void FontOutlineDecompositionContext::iterateOverContours(const IdShapeMapIterator& shapeIterator) const
+{
+	IdShapeMap idShapeMap;
+	int32_t curShapeId = -1;
+	std::vector<size_t>* curSizeTVecetor = nullptr;
+	for(size_t i = 0; i < edges.size(); ++i) {
+		const auto& it = edges[i];
+		if( it.shapeId != curShapeId ) {
+			idShapeMap.push_back( std::vector<size_t>() );
+			curSizeTVecetor = &idShapeMap.back();
+		}
+		curShapeId = it.shapeId;
+		curSizeTVecetor->push_back(i);
+	}
+	shapeIterator(idShapeMap);
+}
+
+void FontOutlineDecompositionContext::assignColours()
+{
+	iterateOverContours( [this](const IdShapeMap& idMap) {
+		for( const auto& c : idMap ) {
+			uint32_t current;
+			if( c.size() <= 1 ) {
+				current = 0xFFFFFF;
+			} else {
+				current = 0xFF00FF;
+			}
+			for( const size_t e : c ) {
+				edges[e].clr = current;
+				if( current == 0xFFFF00 ) {
+					current = 0x00FFFF;
+				}
+				else {
+					current = 0xFFFF00;
+				}
+			}
+		}
+	} );
+}

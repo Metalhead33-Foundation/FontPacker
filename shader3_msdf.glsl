@@ -11,12 +11,21 @@ const int CUBIC = 2;
 
 struct EdgeSegment {
     int type;
+    int shapeId;
+    uint clr;
     vec2 points[4];
 };
 
 layout(std430, binding = 3) buffer EdgeBuffer {
     EdgeSegment edges[];
 };
+
+vec3 unpackRGB(uint packedRgb) {
+    float r = float((packedRgb >> 16) & 0xFF) / 255.0;
+    float g = float((packedRgb >> 8)  & 0xFF) / 255.0;
+    float b = float( packedRgb        & 0xFF) / 255.0;
+    return vec3(r, g, b);
+}
 
 // Calculate distance to line segment (p1, p2) with direction vector
 vec4 distanceToLineSegment(vec2 p, vec2 p1, vec2 p2) {
@@ -178,11 +187,14 @@ void main(void)
 
     vec2 pos = vec2(threadId) + vec2(0.5);
     vec2 p = pos;
-    float minDistance = 1e30;
+    vec3 minDistance = vec3(1e30,1e30,1e30);
+    ivec3 eids = ivec3(0,0,0);
     vec2 minNormal = vec2(1.0, 0.0);
 
     // Calculate minimum distance to any edge with direction
     for(int i = 0; i < edges.length(); ++i) {
+	vec3 edgeClr = unpackRGB(edges[i].clr);
+
 	vec4 distanceInfo = vec4(1e30, 0.0, 0.0, 1.0); // distance, normalX, normalY, 1.0
 
 	// Calculate distance based on edge type
@@ -196,10 +208,23 @@ void main(void)
 	    distanceInfo = distanceToCubicBezier(pos, edges[i].points[0], edges[i].points[1], edges[i].points[2], edges[i].points[3]);
 	}
 
-	if (distanceInfo.x < minDistance) {
+	if((edgeClr.r > 0.003921568627451) && (distanceInfo.x < minDistance.r)) {
+	    minDistance.r = distanceInfo.x;
+	    eids.r = i;
+	}
+	if((edgeClr.g > 0.003921568627451) && (distanceInfo.x < minDistance.g)) {
+	    minDistance.g = distanceInfo.x;
+	    eids.g = i;
+	}
+	if((edgeClr.b > 0.003921568627451) && (distanceInfo.x < minDistance.b)) {
+	    minDistance.b = distanceInfo.x;
+	    eids.b = i;
+	}
+
+	/*if (distanceInfo.x < minDistance) {
 	    minDistance = distanceInfo.x;
 	    minNormal = distanceInfo.yz; // Extract normal from the returned vector
-	}
+	}*/
     }
 
     // Determine if the point is inside or outside the shape
@@ -262,9 +287,9 @@ void main(void)
     bool inside = winding != 0;
 
     // Generate MSDF encoding
-    vec3 msdfValue = msdfEncode(minDistance, minNormal, inside);
+    //vec3 msdfValue = msdfEncode(minDistance, minNormal, inside);
 
     // Store results
-    imageStore(msdfTexture, threadId, vec4(msdfValue, 1.0));
+    imageStore(msdfTexture, threadId, vec4(minDistance, 1.0));
     imageStore(isInsideTex, threadId, vec4(float(inside), float(inside), float(inside), 1.0));
 }
