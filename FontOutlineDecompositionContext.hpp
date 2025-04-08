@@ -30,6 +30,8 @@ enum CubicPart {
 
 struct EdgeSegment {
 	EdgeType type;
+	int32_t shapeId;
+	uint32_t clr;
 	int32_t padding; // For easier storage in OpenGL SSBOs. std430
 	std::array<glm::fvec2,4> points;
 	float getMinX() const;
@@ -41,6 +43,7 @@ struct EdgeSegment {
 struct FontOutlineDecompositionContext {
 	glm::fvec2 curPos;
 	std::vector<EdgeSegment> edges;
+	int32_t curShapeId = 0;
 	int moveTo(const glm::fvec2& to);
 	int lineTo(const glm::fvec2& to);
 	int conicTo(const glm::fvec2& control, const glm::fvec2&  to);

@@ -15,6 +15,7 @@ template<typename T, size_t N> void zeroOut(std::array<T,N>& data) {
 int FontOutlineDecompositionContext::moveTo(const glm::fvec2& to)
 {
 	curPos = to;
+	++curShapeId;
 	return 0;
 }
 
@@ -68,6 +69,7 @@ int FontOutlineDecompositionContext::lineTo(const glm::fvec2& to)
 	auto& edge = edges.back();
 	edge.type = LINEAR;
 	zeroOut(edge.points);
+	edge.shapeId = curShapeId;
 	edge.points[LINE_P1] = curPos;
 	edge.points[LINE_P2] = to;
 	curPos = to;
@@ -80,6 +82,7 @@ int FontOutlineDecompositionContext::conicTo(const glm::fvec2& control, const gl
 	auto& edge = edges.back();
 	edge.type = QUADRATIC;
 	zeroOut(edge.points);
+	edge.shapeId = curShapeId;
 	edge.points[QUADRATIC_P1] = curPos;
 	edge.points[QUADRATIC_CONTROL] = control;
 	edge.points[QUADRATIC_P2] = to;
@@ -93,6 +96,7 @@ int FontOutlineDecompositionContext::cubicTo(const glm::fvec2& control1, const g
 	auto& edge = edges.back();
 	edge.type = CUBIC;
 	zeroOut(edge.points);
+	edge.shapeId = curShapeId;
 	edge.points[CUBIC_P1] = curPos;
 	edge.points[CUBIC_CONTROL1] = control1;
 	edge.points[CUBIC_CONTROL2] = control2;
