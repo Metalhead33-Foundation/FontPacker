@@ -94,7 +94,7 @@ void SdfGenerationGL::fetchSdfFromGPU(QImage& newimg, const SDFGenerationArgumen
 
 void SdfGenerationGL::fetchMSDFFromGPU(QImage& newimg, const SDFGenerationArguments& args)
 {
-	std::vector<uint8_t> areTheyInside = newTex2.getTextureAs<uint8_t>();
+	std::vector<RGBA8888> areTheyInside = newTex2.getTextureAs<RGBA8888>();
 	// We need HugePreallocator!
 	std::vector<glm::fvec4> rawDistances = newTex.getTextureAs<glm::fvec4>();
 	//std::vector<Rgba8,HugePreallocator<Rgba8>> rawDistances = newTex.getTextureAs<Rgba8,HugePreallocator<Rgba8>>();
@@ -103,7 +103,7 @@ void SdfGenerationGL::fetchMSDFFromGPU(QImage& newimg, const SDFGenerationArgume
 	glm::fvec3 maxDistOut(std::numeric_limits<float>::epsilon());
 
 	for(size_t i = 0; i < rawDistances.size(); ++i) {
-		if(areTheyInside[i]) {
+		if(areTheyInside[i].r) {
 			maxDistIn.r = std::max(maxDistIn.r, std::abs(rawDistances[i].r) );
 			maxDistIn.g = std::max(maxDistIn.g, std::abs(rawDistances[i].g) );
 			maxDistIn.b = std::max(maxDistIn.b, std::abs(rawDistances[i].b) );
@@ -118,7 +118,7 @@ void SdfGenerationGL::fetchMSDFFromGPU(QImage& newimg, const SDFGenerationArgume
 	}
 	for(size_t i = 0; i < rawDistances.size(); ++i) {
 		glm::fvec4& it = rawDistances[i];
-		if(areTheyInside[i]) {
+		if(areTheyInside[i].r) {
 			it /= glm::fvec4(maxDistIn,1.0f);
 			it = 0.5f + (it * 0.5f);
 		} else {
@@ -165,7 +165,7 @@ SdfGenerationGL::SdfGenerationGL(const SDFGenerationArguments& args) :
 	glHelpers(), finalImageFormat(getFinalImageFormat(args)), temporaryTextureFormat(getTemporaryTextureFormat(args)),
 	oldTex(args.internalProcessSize,args.internalProcessSize, QImage::Format_Grayscale8),
 	newTex(args.internalProcessSize, args.internalProcessSize, temporaryTextureFormat),
-	newTex2(args.internalProcessSize, args.internalProcessSize, { GL_R8, GL_RED, GL_UNSIGNED_BYTE }),
+	newTex2(args.internalProcessSize, args.internalProcessSize, args.type == SDFType::SDF ? QImage::Format_Grayscale8 : QImage::Format_RGBA8888 ),
 	uniformBuffer(glHelpers.glFuncs, glHelpers.extraFuncs), ssboForEdges(glHelpers.glFuncs, glHelpers.extraFuncs, true)
 {
 	QTextStream errStrm(stderr);

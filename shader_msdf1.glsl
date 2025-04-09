@@ -7,7 +7,7 @@ layout (binding = 0, r8) readonly uniform image2D fontTexture;
 
 // Output SDF texture
 layout (binding = 1, r32f) writeonly uniform image2D rawSdfTexture;
-layout (binding = 2, r8) writeonly uniform image2D isInsideTex;
+layout (binding = 2, rgba8) writeonly uniform image2D isInsideTex;
 
 // Texture dimensions
 layout (binding = 3, std140) uniform Dimensions {

@@ -64,6 +64,56 @@ float distanceToCubicBezier(float maxDistance, vec2 p, vec2 p1, vec2 p2, vec2 p3
     return minDist;
 }
 
+int calculateWindingFor(vec2 pos, uint i) {
+    int winding = 0;
+    EdgeSegment edge = edges[i];
+
+    if (edge.type == LINEAR) {
+	vec2 p1 = edge.points[0];
+	vec2 p2 = edge.points[1];
+	if ((p1.y <= pos.y && p2.y > pos.y) || (p1.y > pos.y && p2.y <= pos.y)) {
+	    float intersectX = p1.x + (pos.y - p1.y) * (p2.x - p1.x) / (p2.y - p1.y);
+	    if (pos.x < intersectX) {
+		winding += (p1.y <= pos.y) ? 1 : -1;
+	    }
+	}
+    }
+    else if (edge.type == QUADRATIC || edge.type == CUBIC) {
+	const int CURVE_STEPS = 8;
+	vec2 prevPoint = edge.points[0];
+
+	for (int j = 1; j <= CURVE_STEPS; j++) {
+	    float t = float(j) / float(CURVE_STEPS);
+	    vec2 currPoint;
+
+	    if (edge.type == QUADRATIC) {
+		float t1 = 1.0 - t;
+		currPoint = t1*t1*edge.points[0] + 2.0*t1*t*edge.points[1] + t*t*edge.points[2];
+	    } else {
+		float t1 = 1.0 - t;
+		currPoint = t1*t1*t1*edge.points[0] + 3.0*t1*t1*t*edge.points[1] + 3.0*t1*t*t*edge.points[2] + t*t*t*edge.points[3];
+	    }
+
+	    if ((prevPoint.y <= pos.y && currPoint.y > pos.y) || (prevPoint.y > pos.y && currPoint.y <= pos.y)) {
+		float intersectX = prevPoint.x + (pos.y - prevPoint.y) * (currPoint.x - prevPoint.x) / (currPoint.y - prevPoint.y);
+		if (pos.x < intersectX) {
+		    winding += (prevPoint.y <= pos.y) ? 1 : -1;
+		}
+	    }
+	    prevPoint = currPoint;
+	}
+    }
+    return winding;
+}
+
+int calculateWinding(vec2 pos) {
+    int windingNumber = 0;
+    for (int i = 0; i < edges.length(); ++i) {
+	windingNumber += calculateWindingFor(pos, i);
+    }
+    return windingNumber;
+}
+
 void main(void) {
     ivec2 threadId = ivec2(gl_GlobalInvocationID.xy);
     ivec2 imageDimensions = imageSize(rawSdfTexture);
@@ -81,45 +131,7 @@ void main(void) {
     int currentShapeId = -1;
 
     // First pass: compute accurate winding number
-    for (int i = 0; i < edges.length(); ++i) {
-	EdgeSegment edge = edges[i];
-
-	if (edge.type == LINEAR) {
-	    vec2 p1 = edge.points[0];
-	    vec2 p2 = edge.points[1];
-	    if ((p1.y <= pos.y && p2.y > pos.y) || (p1.y > pos.y && p2.y <= pos.y)) {
-		float intersectX = p1.x + (pos.y - p1.y) * (p2.x - p1.x) / (p2.y - p1.y);
-		if (pos.x < intersectX) {
-		    winding += (p1.y <= pos.y) ? 1 : -1;
-		}
-	    }
-	}
-	else if (edge.type == QUADRATIC || edge.type == CUBIC) {
-	    const int CURVE_STEPS = 8;
-	    vec2 prevPoint = edge.points[0];
-
-	    for (int j = 1; j <= CURVE_STEPS; j++) {
-		float t = float(j) / float(CURVE_STEPS);
-		vec2 currPoint;
-
-		if (edge.type == QUADRATIC) {
-		    float t1 = 1.0 - t;
-		    currPoint = t1*t1*edge.points[0] + 2.0*t1*t*edge.points[1] + t*t*edge.points[2];
-		} else {
-		    float t1 = 1.0 - t;
-		    currPoint = t1*t1*t1*edge.points[0] + 3.0*t1*t1*t*edge.points[1] + 3.0*t1*t*t*edge.points[2] + t*t*t*edge.points[3];
-		}
-
-		if ((prevPoint.y <= pos.y && currPoint.y > pos.y) || (prevPoint.y > pos.y && currPoint.y <= pos.y)) {
-		    float intersectX = prevPoint.x + (pos.y - prevPoint.y) * (currPoint.x - prevPoint.x) / (currPoint.y - prevPoint.y);
-		    if (pos.x < intersectX) {
-			winding += (prevPoint.y <= pos.y) ? 1 : -1;
-		    }
-		}
-		prevPoint = currPoint;
-	    }
-	}
-    }
+    winding = calculateWinding(pos);
 
     // Second pass: compute minimum distance (now that we know winding)
     for (int i = 0; i < edges.length(); ++i) {
