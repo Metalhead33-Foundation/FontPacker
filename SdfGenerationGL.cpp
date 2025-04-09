@@ -5,6 +5,7 @@
 #include <QTextStream>
 #include <cassert>
 #include <glm/glm.hpp>
+#include "RGBA8888.hpp"
 
 struct Rgb32f {
 	float r, g, b, a;
@@ -124,21 +125,38 @@ void SdfGenerationGL::fetchMSDFFromGPU(QImage& newimg, const SDFGenerationArgume
 			it /= glm::fvec4(maxDistOut,1.0f);
 			it = 0.5f - (it * 0.5f);
 		}
+		it.a = 1.0f;
 		/*it /= glm::fvec4(maxDistIn,1.0f);
 		it.r = 1.0f - it.r;
 		it.g = 1.0f - it.g;
 		it.b = 1.0f - it.b;*/
 	}
+	if(args.midpointAdjustment.has_value()) {
+		float toDivideWith = args.midpointAdjustment.value_or(1.0f);
+		for(size_t i = 0; i < rawDistances.size(); ++i) {
+			glm::fvec4& it = rawDistances[i];
+			it.x = std::clamp(it.x/toDivideWith,0.0f,1.0f);
+			it.y = std::clamp(it.y/toDivideWith,0.0f,1.0f);
+			it.z = std::clamp(it.z/toDivideWith,0.0f,1.0f);
+			it.w = std::clamp(it.w/toDivideWith,0.0f,1.0f);
+		}
+	}
+	if(args.gammaCorrect) {
+		for(size_t i = 0; i < rawDistances.size(); ++i) {
+			glm::fvec4& it = rawDistances[i];
+			it.x = gammaAdjust(it.x);
+			it.y = gammaAdjust(it.y);
+			it.z = gammaAdjust(it.z);
+			it.w = gammaAdjust(it.w);
+		}
+	}
 	for(int y = 0; y < newimg.height(); ++y) {
-		QRgb* scanline = reinterpret_cast<QRgb*>(newimg.scanLine(y));
+		RGBA8888* scanline = reinterpret_cast<RGBA8888*>(newimg.scanLine(y));
 		const glm::fvec4* rawScanline = &rawDistances[newimg.width()*y];
 		for(int x = 0; x < newimg.width(); ++x) {
 			const glm::fvec4& rawPixel = rawScanline[x];
-			QColor qclr;
-			qclr.setRgbF(rawPixel.r, rawPixel.g, rawPixel.b, rawPixel.a );
-			//qclr.setRgbF(rawPixel.r,rawPixel.g,rawPixel.b,1.0f);
-			scanline[x] = qclr.rgb();
-			//scanline[x] = qRgba(rawPixel.r, rawPixel.g, rawPixel.b, rawPixel.a);
+			RGBA8888& outputPixel = scanline[x];
+			outputPixel.fromFvec4(rawPixel);
 		}
 	}
 }

@@ -52,6 +52,7 @@ HEADERS += \
     Mallocator.hpp \
     OpenGLCanvas.hpp \
     PreprocessedFontFace.hpp \
+    RGBA8888.hpp \
     SDFGenerationArguments.hpp \
     SdfGenerationContext.hpp \
     SdfGenerationContextSoft.hpp \

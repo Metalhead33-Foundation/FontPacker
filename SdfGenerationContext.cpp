@@ -1,3 +1,4 @@
+#include "RGBA8888.hpp"
 #include "SdfGenerationContext.hpp"
 #include <stdexcept>
 #include <QTextStream>
@@ -27,6 +28,15 @@ FT_Outline_Funcs outlineFuncs {
 	.shift = 0,
 	.delta = 0
 };
+
+
+
+static uint32_t nextPowerOf2(uint32_t n) {
+	if (n == 0) return 1;
+	int k = 31 - __builtin_clz(n);  // Highest bit position
+	if (n & (n - 1)) return 1U << (k + 1);  // Not a power of 2, shift up
+	return 1U << k;  // Already a power of 2
+}
 
 double SdfGenerationContext::convert26_6ToDouble(int32_t fixedPointValue) {
 	// Extract the integer part by shifting right by 6 bits
@@ -115,7 +125,7 @@ QImage SdfGenerationContext::downsampleImageByAveraging(const QImage& src)
 			uchar* outputScanline = toReturn.scanLine(y);
 			const uchar* inputScanline0 = src.scanLine(y*2);
 			const uchar* inputScanline1 = src.scanLine( (y*2)+1 );
-			for ( int x = 0; x < toReturn.width() ; ++y ) {
+			for ( int x = 0; x < toReturn.width() ; ++x ) {  // Fixed: ++x instead of ++y
 				uchar& output = outputScanline[x];
 				uchar in00 = inputScanline0[x*2];
 				uchar in01 = inputScanline0[(x*2)+1];
@@ -125,7 +135,23 @@ QImage SdfGenerationContext::downsampleImageByAveraging(const QImage& src)
 			}
 		}
 	} else if (src.format() == QImage::Format_RGBA8888) {
-		// a
+		for( int y = 0; y < toReturn.height(); ++y ) {
+			RGBA8888* outputScanline = reinterpret_cast<RGBA8888*>(toReturn.scanLine(y));
+			const RGBA8888* inputScanline0 = reinterpret_cast<const RGBA8888*>(src.scanLine(y*2));
+			const RGBA8888* inputScanline1 = reinterpret_cast<const RGBA8888*>(src.scanLine((y*2)+1));
+
+			for ( int x = 0; x < toReturn.width() ; ++x ) {
+				const RGBA8888& in00 = inputScanline0[x*2];
+				const RGBA8888& in01 = inputScanline0[(x*2)+1];
+				const RGBA8888& in10 = inputScanline1[x*2];
+				const RGBA8888& in11 = inputScanline1[(x*2)+1];
+
+				// Average components
+				RGBA8888 top = in00.averageWith(in01);
+				RGBA8888 bottom = in10.averageWith(in11);
+				outputScanline[x] = top.averageWith(bottom);
+			}
+		}
 	}
 	return toReturn;
 }
@@ -138,7 +164,7 @@ QImage SdfGenerationContext::dowsanmpleImageByMaxing(const QImage& src)
 			uchar* outputScanline = toReturn.scanLine(y);
 			const uchar* inputScanline0 = src.scanLine(y*2);
 			const uchar* inputScanline1 = src.scanLine( (y*2)+1 );
-			for ( int x = 0; x < toReturn.width() ; ++y ) {
+			for ( int x = 0; x < toReturn.width() ; ++x ) {  // Fixed: ++x instead of ++y
 				uchar& output = outputScanline[x];
 				uchar in00 = inputScanline0[x*2];
 				uchar in01 = inputScanline0[(x*2)+1];
@@ -148,7 +174,23 @@ QImage SdfGenerationContext::dowsanmpleImageByMaxing(const QImage& src)
 			}
 		}
 	} else if (src.format() == QImage::Format_RGBA8888) {
-		// a
+		for( int y = 0; y < toReturn.height(); ++y ) {
+			RGBA8888* outputScanline = reinterpret_cast<RGBA8888*>(toReturn.scanLine(y));
+			const RGBA8888* inputScanline0 = reinterpret_cast<const RGBA8888*>(src.scanLine(y*2));
+			const RGBA8888* inputScanline1 = reinterpret_cast<const RGBA8888*>(src.scanLine((y*2)+1));
+
+			for ( int x = 0; x < toReturn.width() ; ++x ) {
+				const RGBA8888& in00 = inputScanline0[x*2];
+				const RGBA8888& in01 = inputScanline0[(x*2)+1];
+				const RGBA8888& in10 = inputScanline1[x*2];
+				const RGBA8888& in11 = inputScanline1[(x*2)+1];
+
+				// Max components
+				RGBA8888 top = in00.maxWith(in01);
+				RGBA8888 bottom = in10.maxWith(in11);
+				outputScanline[x] = top.maxWith(bottom);
+			}
+		}
 	}
 	return toReturn;
 }
@@ -179,7 +221,19 @@ void SdfGenerationContext::processOutlineGlyph(StoredCharacter& output, FT_Glyph
 	QImage img = produceOutlineSdf(decompositionContext, args);
 
 	if(args.intendedSize) {
-		img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio,Qt::SmoothTransformation);
+			unsigned integerScale = args.internalProcessSize / args.intendedSize;
+			unsigned powerOfTwoTargeet = nextPowerOf2(args.intendedSize);
+			int steps = __builtin_clz(powerOfTwoTargeet) - __builtin_clz(args.internalProcessSize);
+			if(args.maximizeInsteadOfAverage) {
+				for(int i = 0; i < steps; ++i) {
+					img = dowsanmpleImageByMaxing(img);
+				}
+			} else {
+				for(int i = 0; i < steps; ++i) {
+					img = downsampleImageByAveraging(img);
+				}
+			}
+			if(img.width() != args.intendedSize) img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
 	}
 	buff.open(QIODevice::WriteOnly);
 	if(!img.save(&buff, args.jpeg ? "JPG" : "PNG",-1)) throw std::runtime_error("Failed to save image!");
@@ -230,13 +284,6 @@ QImage SdfGenerationContext::FTBitmap2QImage(const FT_Bitmap_& bitmap, unsigned 
 	return toReturn;
 }
 
-uint32_t nextPowerOf2(uint32_t n) {
-	if (n == 0) return 1;
-	int k = 31 - __builtin_clz(n);  // Highest bit position
-	if (n & (n - 1)) return 1U << (k + 1);  // Not a power of 2, shift up
-	return 1U << k;  // Already a power of 2
-}
-
 void SdfGenerationContext::processBitmapGlyph(StoredCharacter& output, FT_GlyphSlot glyphSlot, const SDFGenerationArguments& args)
 {
 	auto error = FT_Render_Glyph( glyphSlot, FT_RENDER_MODE_NORMAL);
@@ -273,7 +320,6 @@ void SdfGenerationContext::processBitmapGlyph(StoredCharacter& output, FT_GlyphS
 	QImage img = produceBitmapSdf(oldImg, args);
 
 	if(args.intendedSize) {
-		if( img.format() == QImage::Format_Grayscale8 ) {
 			unsigned integerScale = args.internalProcessSize / args.intendedSize;
 			unsigned powerOfTwoTargeet = nextPowerOf2(args.intendedSize);
 			int steps = __builtin_clz(powerOfTwoTargeet) - __builtin_clz(args.internalProcessSize);
@@ -287,9 +333,6 @@ void SdfGenerationContext::processBitmapGlyph(StoredCharacter& output, FT_GlyphS
 				}
 			}
 			if(img.width() != args.intendedSize) img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-		} else {
-			img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-		}
 	}
 	buff.open(QIODevice::WriteOnly);
 	if(!img.save(&buff, args.jpeg ? "JPG" : "PNG",-1)) throw std::runtime_error("Failed to save image!");

@@ -227,16 +227,17 @@ void FontOutlineDecompositionContext::assignColours()
 			uint32_t current;
 			if( c.size() <= 1 ) {
 				current = 0xFFFFFF;
+				edges[c[0]].clr = current;
 			} else {
 				current = 0xFF00FF;
-			}
-			for( const size_t e : c ) {
-				edges[e].clr = current;
-				if( current == 0xFFFF00 ) {
-					current = 0x00FFFF;
-				}
-				else {
-					current = 0xFFFF00;
+				for( const size_t e : c ) {
+					edges[e].clr = current;
+					if( current == 0xFFFF00 ) {
+						current = 0x00FFFF;
+					}
+					else {
+						current = 0xFFFF00;
+					}
 				}
 			}
 		}
