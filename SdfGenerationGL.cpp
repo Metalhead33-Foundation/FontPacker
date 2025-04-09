@@ -101,9 +101,28 @@ void SdfGenerationGL::fetchMSDFFromGPU(QImage& newimg, const SDFGenerationArgume
 	//std::vector<Rgba8> rawDistances = newTex.getTextureAs<Rgba8>();
 	glm::fvec3 maxDistIn(std::numeric_limits<float>::epsilon());
 	glm::fvec3 maxDistOut(std::numeric_limits<float>::epsilon());
+	glm::fvec4 maxDistAbs(std::numeric_limits<float>::epsilon());
 
 	for(size_t i = 0; i < rawDistances.size(); ++i) {
-		if(areTheyInside[i].r) {
+		for(int z = 0; z < 4; ++z) {
+			maxDistAbs[z] = std::max(maxDistAbs.r, std::abs(rawDistances[i][z]));
+		}
+		/*if(areTheyInside[i].r) {
+			maxDistIn.r = std::max(maxDistIn.r, std::abs(rawDistances[i].r) );
+		} else {
+			maxDistOut.r = std::max(maxDistOut.r, std::abs(rawDistances[i].r) );
+		}
+		if(areTheyInside[i].g) {
+			maxDistIn.g = std::max(maxDistIn.g, std::abs(rawDistances[i].g) );
+		} else {
+			maxDistOut.g = std::max(maxDistOut.g, std::abs(rawDistances[i].g) );
+		}
+		if(areTheyInside[i].b) {
+			maxDistIn.b = std::max(maxDistIn.b, std::abs(rawDistances[i].b) );
+		} else {
+			maxDistOut.b = std::max(maxDistOut.b, std::abs(rawDistances[i].b) );
+		}*/
+		/*if(areTheyInside[i].a) {
 			maxDistIn.r = std::max(maxDistIn.r, std::abs(rawDistances[i].r) );
 			maxDistIn.g = std::max(maxDistIn.g, std::abs(rawDistances[i].g) );
 			maxDistIn.b = std::max(maxDistIn.b, std::abs(rawDistances[i].b) );
@@ -111,20 +130,47 @@ void SdfGenerationGL::fetchMSDFFromGPU(QImage& newimg, const SDFGenerationArgume
 			maxDistOut.r = std::max(maxDistOut.r, std::abs(rawDistances[i].r) );
 			maxDistOut.g = std::max(maxDistOut.g, std::abs(rawDistances[i].g) );
 			maxDistOut.b = std::max(maxDistOut.b, std::abs(rawDistances[i].b) );
-		}
+		}*/
 		/*maxDistIn.r = std::max(maxDistIn.r, std::abs(rawDistances[i].r) );
 		maxDistIn.g = std::max(maxDistIn.g, std::abs(rawDistances[i].g) );
 		maxDistIn.b = std::max(maxDistIn.b, std::abs(rawDistances[i].b) );*/
 	}
 	for(size_t i = 0; i < rawDistances.size(); ++i) {
 		glm::fvec4& it = rawDistances[i];
-		if(areTheyInside[i].r) {
+		for(int z = 0; z < 4; ++z) {
+			it[z] /= maxDistAbs[z];
+			it[z] *= -1.0f;
+			it[z] /= 2.0f;
+			it[z] += 0.5f;
+		}
+		/*if(areTheyInside[i].r) {
+			it.r /= maxDistIn.r;
+			it.r = 0.5f + (it.r * 0.5f);
+		} else {
+			it.r /= maxDistOut.r;
+			it.r = 0.5f - (it.r * 0.5f);
+		}
+		if(areTheyInside[i].g) {
+			it.g /= maxDistIn.g;
+			it.g = 0.5f + (it.g * 0.5f);
+		} else {
+			it.g /= maxDistOut.g;
+			it.g = 0.5f - (it.g * 0.5f);
+		}
+		if(areTheyInside[i].b) {
+			it.b /= maxDistIn.b;
+			it.b = 0.5f + (it.b * 0.5f);
+		} else {
+			it.b /= maxDistOut.b;
+			it.b = 0.5f - (it.b * 0.5f);
+		}*/
+		/*if(areTheyInside[i].a) {
 			it /= glm::fvec4(maxDistIn,1.0f);
 			it = 0.5f + (it * 0.5f);
 		} else {
 			it /= glm::fvec4(maxDistOut,1.0f);
 			it = 0.5f - (it * 0.5f);
-		}
+		}*/
 		it.a = 1.0f;
 		/*it /= glm::fvec4(maxDistIn,1.0f);
 		it.r = 1.0f - it.r;
