@@ -37,6 +37,7 @@ DISTFILES += \
     .gitignore \
     LICENSE \
     README.md \
+    msdf_fixer.glsl \
     screen.vert.glsl \
     shader1.glsl \
     shader3.glsl \

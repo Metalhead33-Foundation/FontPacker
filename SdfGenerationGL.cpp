@@ -62,6 +62,7 @@ void SdfGenerationGL::fetchSdfFromGPU(QImage& newimg, const SDFGenerationArgumen
 			it /= maxDistOut;
 			it = 0.5f - (it * 0.5f);
 		}
+		if(args.invert) it = 1.0f - it;
 	}
 	if(args.midpointAdjustment.has_value()) {
 		float toDivideWith = args.midpointAdjustment.value_or(1.0f);
@@ -94,88 +95,58 @@ void SdfGenerationGL::fetchSdfFromGPU(QImage& newimg, const SDFGenerationArgumen
 
 void SdfGenerationGL::fetchMSDFFromGPU(QImage& newimg, const SDFGenerationArguments& args)
 {
+	glHelpers.glFuncs->glUseProgram(msdfFixerShader->programId());
+	newTex.bindAsImage(glHelpers.extraFuncs, 0, GL_READ_ONLY);
+	glHelpers.glFuncs->glUniform1i(fixer_tex_uniform1,0);
+	newTex3.bindAsImage(glHelpers.extraFuncs, 1, GL_WRITE_ONLY);
+	glHelpers.glFuncs->glUniform1i(fixer_tex_uniform2,1);
+	glHelpers.extraFuncs->glDispatchCompute(args.internalProcessSize,args.internalProcessSize,1);
+	glHelpers.extraFuncs->glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 	std::vector<RGBA8888> areTheyInside = newTex2.getTextureAs<RGBA8888>();
 	// We need HugePreallocator!
-	std::vector<glm::fvec4> rawDistances = newTex.getTextureAs<glm::fvec4>();
+	std::vector<glm::fvec4> rawDistances = newTex3.getTextureAs<glm::fvec4>();
 	//std::vector<Rgba8,HugePreallocator<Rgba8>> rawDistances = newTex.getTextureAs<Rgba8,HugePreallocator<Rgba8>>();
 	//std::vector<Rgba8> rawDistances = newTex.getTextureAs<Rgba8>();
-	glm::fvec3 maxDistIn(std::numeric_limits<float>::epsilon());
-	glm::fvec3 maxDistOut(std::numeric_limits<float>::epsilon());
-	glm::fvec4 maxDistAbs(std::numeric_limits<float>::epsilon());
+	glm::fvec3 maxDistIn(std::numeric_limits<float>::lowest());
+	glm::fvec3 maxDistOut(std::numeric_limits<float>::lowest());
+
+	glm::fvec4 minDist(std::numeric_limits<float>::max());
+	glm::fvec4 maxDist(std::numeric_limits<float>::lowest());
+
+	/*const float distCap = std::sqrt(static_cast<float>(args.samples_to_check_x) * static_cast<float>(args.samples_to_check_y));
 
 	for(size_t i = 0; i < rawDistances.size(); ++i) {
+		glm::fvec4& it = rawDistances[i];
 		for(int z = 0; z < 4; ++z) {
-			maxDistAbs[z] = std::max(maxDistAbs.r, std::abs(rawDistances[i][z]));
+			float& t = it[z];
+			t = std::clamp(t, -distCap, distCap );
 		}
-		/*if(areTheyInside[i].r) {
-			maxDistIn.r = std::max(maxDistIn.r, std::abs(rawDistances[i].r) );
-		} else {
-			maxDistOut.r = std::max(maxDistOut.r, std::abs(rawDistances[i].r) );
+	}*/
+	for(size_t i = 0; i < rawDistances.size(); ++i) {
+		for(int z = 0; z < 4; ++z) {
+			maxDist[z] = std::max(maxDist[z], rawDistances[i][z]);
+			minDist[z] = std::min(minDist[z], rawDistances[i][z]);
 		}
-		if(areTheyInside[i].g) {
-			maxDistIn.g = std::max(maxDistIn.g, std::abs(rawDistances[i].g) );
-		} else {
-			maxDistOut.g = std::max(maxDistOut.g, std::abs(rawDistances[i].g) );
-		}
-		if(areTheyInside[i].b) {
-			maxDistIn.b = std::max(maxDistIn.b, std::abs(rawDistances[i].b) );
-		} else {
-			maxDistOut.b = std::max(maxDistOut.b, std::abs(rawDistances[i].b) );
-		}*/
-		/*if(areTheyInside[i].a) {
-			maxDistIn.r = std::max(maxDistIn.r, std::abs(rawDistances[i].r) );
-			maxDistIn.g = std::max(maxDistIn.g, std::abs(rawDistances[i].g) );
-			maxDistIn.b = std::max(maxDistIn.b, std::abs(rawDistances[i].b) );
-		} else {
-			maxDistOut.r = std::max(maxDistOut.r, std::abs(rawDistances[i].r) );
-			maxDistOut.g = std::max(maxDistOut.g, std::abs(rawDistances[i].g) );
-			maxDistOut.b = std::max(maxDistOut.b, std::abs(rawDistances[i].b) );
-		}*/
-		/*maxDistIn.r = std::max(maxDistIn.r, std::abs(rawDistances[i].r) );
-		maxDistIn.g = std::max(maxDistIn.g, std::abs(rawDistances[i].g) );
-		maxDistIn.b = std::max(maxDistIn.b, std::abs(rawDistances[i].b) );*/
 	}
 	for(size_t i = 0; i < rawDistances.size(); ++i) {
 		glm::fvec4& it = rawDistances[i];
 		for(int z = 0; z < 4; ++z) {
-			it[z] /= maxDistAbs[z];
-			it[z] *= -1.0f;
-			it[z] /= 2.0f;
-			it[z] += 0.5f;
+			float& t = it[z];
+			const float& max = maxDist[z];
+			const float& min = minDist[z];
+			// Normalize from [min, max] to [-1, 1] while keeping 0 as 0
+			if(t >= 0.0f) {
+				t /= max;
+			} else {
+				t /= min;
+				t *= -1.0f;
+			}
+			// Normalize from from [-1, 1] to [0, 1] while [0] becomes [0.5]
+			t *= 0.5f;
+			t += 0.5f;
+			if(args.invert) t = 1.0f - t;
 		}
-		/*if(areTheyInside[i].r) {
-			it.r /= maxDistIn.r;
-			it.r = 0.5f + (it.r * 0.5f);
-		} else {
-			it.r /= maxDistOut.r;
-			it.r = 0.5f - (it.r * 0.5f);
-		}
-		if(areTheyInside[i].g) {
-			it.g /= maxDistIn.g;
-			it.g = 0.5f + (it.g * 0.5f);
-		} else {
-			it.g /= maxDistOut.g;
-			it.g = 0.5f - (it.g * 0.5f);
-		}
-		if(areTheyInside[i].b) {
-			it.b /= maxDistIn.b;
-			it.b = 0.5f + (it.b * 0.5f);
-		} else {
-			it.b /= maxDistOut.b;
-			it.b = 0.5f - (it.b * 0.5f);
-		}*/
-		/*if(areTheyInside[i].a) {
-			it /= glm::fvec4(maxDistIn,1.0f);
-			it = 0.5f + (it * 0.5f);
-		} else {
-			it /= glm::fvec4(maxDistOut,1.0f);
-			it = 0.5f - (it * 0.5f);
-		}*/
 		it.a = 1.0f;
-		/*it /= glm::fvec4(maxDistIn,1.0f);
-		it.r = 1.0f - it.r;
-		it.g = 1.0f - it.g;
-		it.b = 1.0f - it.b;*/
 	}
 	if(args.midpointAdjustment.has_value()) {
 		float toDivideWith = args.midpointAdjustment.value_or(1.0f);
@@ -212,6 +183,7 @@ SdfGenerationGL::SdfGenerationGL(const SDFGenerationArguments& args) :
 	oldTex(args.internalProcessSize,args.internalProcessSize, QImage::Format_Grayscale8),
 	newTex(args.internalProcessSize, args.internalProcessSize, temporaryTextureFormat),
 	newTex2(args.internalProcessSize, args.internalProcessSize, args.type == SDFType::SDF ? QImage::Format_Grayscale8 : QImage::Format_RGBA8888 ),
+	newTex3(args.internalProcessSize, args.internalProcessSize, temporaryTextureFormat),
 	uniformBuffer(glHelpers.glFuncs, glHelpers.extraFuncs), ssboForEdges(glHelpers.glFuncs, glHelpers.extraFuncs, true)
 {
 	QTextStream errStrm(stderr);
@@ -256,6 +228,23 @@ SdfGenerationGL::SdfGenerationGL(const SDFGenerationArguments& args) :
 			}
 		}
 	}
+	if(args.type != SDFType::SDF) {
+		msdfFixerShader = std::make_unique<QOpenGLShaderProgram>();
+		QFile res(":/msdf_fixer.glsl");
+		if(res.open(QFile::ReadOnly)) {
+			QByteArray shdrArr = res.readAll();
+			if(!msdfFixerShader->addCacheableShaderFromSourceCode(QOpenGLShader::Compute,shdrArr)) {
+				errStrm << msdfFixerShader->log() << '\n';
+				errStrm.flush();
+				throw std::runtime_error("Failed to add shader!");
+			}
+			if(!msdfFixerShader->link()) {
+				errStrm << msdfFixerShader->log() << '\n';
+				errStrm.flush();
+				throw std::runtime_error("Failed to compile OpenGL shader!");
+			}
+		}
+	}
 	uniform.width = args.samples_to_check_x ? args.samples_to_check_x / 2 : args.padding;
 	uniform.height = args.samples_to_check_y ? args.samples_to_check_y / 2 : args.padding;
 	uniformBuffer.initializeFrom(uniform);
@@ -269,6 +258,11 @@ SdfGenerationGL::SdfGenerationGL(const SDFGenerationArguments& args) :
 	sdfUniform2_vec = glShader2->uniformLocation("isInsideTex");
 	ssboUniform_vec = glHelpers.extraFuncs->glGetProgramResourceIndex(glShader2->programId(), GL_SHADER_STORAGE_BLOCK, "EdgeBuffer");
 	dimensionsUniform_vec = glShader2->uniformLocation("Dimensions");
+	if(args.type != SDFType::SDF) {
+		glHelpers.glFuncs->glUseProgram(msdfFixerShader->programId());
+		fixer_tex_uniform1 = msdfFixerShader->uniformLocation("sdf_input");
+		fixer_tex_uniform2 = msdfFixerShader->uniformLocation("sdf_output");
+	}
 }
 
 /*
@@ -306,6 +300,7 @@ QImage SdfGenerationGL::produceBitmapSdf(const QImage& source, const SDFGenerati
 			break;
 		}
 		case MSDFA:
+			fetchMSDFFromGPU(newimg,args);
 			break;
 		default: break;
 	}
@@ -340,6 +335,7 @@ QImage SdfGenerationGL::produceOutlineSdf(const FontOutlineDecompositionContext&
 			break;
 		}
 		case MSDFA:
+			fetchMSDFFromGPU(newimg,args);
 			break;
 		default: break;
 	}

@@ -55,3 +55,4 @@ const QString FORCE_RASTER_KEY = QStringLiteral("forceraster");
 const QString GAMMA_CORRECT_KEY = QStringLiteral("gammacorrect");
 const QString MIDPOINT_ADJUSTMENT_KEY = QStringLiteral("midpointadjustment");
 const QString MAXIMIZE_INSTEAD_OF_AVERAGE_KEY = QStringLiteral("maximizeinsteadofaverage");
+const QString INVERT_KEY = QStringLiteral("invert");

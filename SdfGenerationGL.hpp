@@ -27,10 +27,12 @@ private:
 		GlTextureFormat temporaryTextureFormat;
 		std::unique_ptr<QOpenGLShaderProgram> glShader;
 		std::unique_ptr<QOpenGLShaderProgram> glShader2;
+		std::unique_ptr<QOpenGLShaderProgram> msdfFixerShader;
 		UniformForCompute uniform;
 		GlTexture oldTex;
 		GlTexture newTex;
 		GlTexture newTex2;
+		GlTexture newTex3;
 		GlStorageBuffer uniformBuffer;
 		GlStorageBuffer ssboForEdges;
 
@@ -45,6 +47,9 @@ private:
 		int sdfUniform2_vec;
 		int ssboUniform_vec;
 		int dimensionsUniform_vec;
+
+		int fixer_tex_uniform1;
+		int fixer_tex_uniform2;
 public:
 	SdfGenerationGL(const SDFGenerationArguments& args);
 	QImage produceBitmapSdf(const QImage& source, const SDFGenerationArguments& args) override;

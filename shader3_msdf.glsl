@@ -119,8 +119,7 @@ float distanceToLinePseudo(vec2 p, vec2 a, vec2 b) {
     vec2 ba = b - a;
     float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
     vec2 nearest = a + h * ba;
-    vec2 diff = p - nearest;
-    return length(diff);
+    return DISTANCE_FUNC(p, nearest);
 }
 
 // Approximate distance to quadratic Bézier (using subdivision)
@@ -295,38 +294,39 @@ void main(void) {
 
     vec2 pos = vec2(threadId) + 0.5;
     float maxDistance = FLT_MAX;
+    #ifdef USE_MANHATTAN_DISTANCE
+    float realMaxDistance = abs(float(intendedSampleWidth)) + abs(float(intendedSampleHeight));
+    #else
+    float realMaxDistance = length(vec2(intendedSampleWidth, intendedSampleHeight));
+    #endif
 
     // Find closest edge per channel and track contour IDs
-    vec3 minDistance = vec3(maxDistance);
+    vec4 minDistance = vec4(maxDistance);
     ivec3 closestEdgeIds = ivec3(-1);
     ivec3 closestContourIds = ivec3(-1);
     for (int i = 0; i < edges.length(); ++i) {
 	EdgeSegment edge = edges[i];
 	vec3 clr = unpackRGB(edge.clr);
 	float dist = calculateDistance(maxDistance, pos, i);
-	if (clr.r >= 0.003921568627451 && dist <= minDistance.r) {
+        if (dist <= minDistance.a) {
+            minDistance.a = dist;
+        }
+        if (clr.r >= 0.003921568627451 && dist <= minDistance.r) {
 	    minDistance.r = dist;
 	    closestEdgeIds.r = i;
 	    closestContourIds.r = edge.shapeId;
 	}
-	if (clr.g >= 0.003921568627451 && dist <= minDistance.g) {
+        if (clr.g >= 0.003921568627451 && dist <= minDistance.g) {
 	    minDistance.g = dist;
 	    closestEdgeIds.g = i;
 	    closestContourIds.g = edge.shapeId;
 	}
-	if (clr.b >= 0.003921568627451 && dist <= minDistance.b) {
+        if (clr.b >= 0.003921568627451 && dist <= minDistance.b) {
 	    minDistance.b = dist;
 	    closestEdgeIds.b = i;
 	    closestContourIds.b = edge.shapeId;
 	}
     }
-
-    // Refine distances
-    minDistance = vec3(
-        closestEdgeIds.r >= 0 ? signedDistancePseudo(pos, edges[closestEdgeIds.r]) : maxDistance,
-        closestEdgeIds.g >= 0 ? signedDistancePseudo(pos, edges[closestEdgeIds.g]) : maxDistance,
-        closestEdgeIds.b >= 0 ? signedDistancePseudo(pos, edges[closestEdgeIds.b]) : maxDistance
-    );
 
     // Compute winding based on the contour of the closest edge per channel
     ivec4 winding = ivec4(0);
@@ -335,7 +335,19 @@ void main(void) {
     if (closestContourIds.b >= 0) winding.b = calculateWindingForContour(pos, closestContourIds.b);
     winding.a = calculateWinding(pos); // Global winding for all contours
 
-    imageStore(rawSdfTexture, threadId, vec4(minDistance, 1.0));
+
+    // Refine distances
+    minDistance = vec4(
+        closestEdgeIds.r >= 0 ? signedDistancePseudo(pos, edges[closestEdgeIds.r]) : maxDistance,
+        closestEdgeIds.g >= 0 ? signedDistancePseudo(pos, edges[closestEdgeIds.g]) : maxDistance,
+        closestEdgeIds.b >= 0 ? signedDistancePseudo(pos, edges[closestEdgeIds.b]) : maxDistance,
+        winding.a <= 0 ? -minDistance.a : minDistance.a
+    );
+    minDistance.r = clamp(minDistance.r, -realMaxDistance, realMaxDistance);
+    minDistance.g = clamp(minDistance.g, -realMaxDistance, realMaxDistance);
+    minDistance.b = clamp(minDistance.b, -realMaxDistance, realMaxDistance);
+    minDistance.a = clamp(minDistance.b, -realMaxDistance, realMaxDistance);
+    imageStore(rawSdfTexture, threadId, minDistance);
     imageStore(isInsideTex, threadId, vec4(
         float(winding.r != 0),
         float(winding.g != 0),
