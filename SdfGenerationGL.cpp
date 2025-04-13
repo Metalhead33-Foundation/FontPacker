@@ -95,16 +95,17 @@ void SdfGenerationGL::fetchSdfFromGPU(QImage& newimg, const SDFGenerationArgumen
 
 void SdfGenerationGL::fetchMSDFFromGPU(QImage& newimg, const SDFGenerationArguments& args)
 {
-	glHelpers.glFuncs->glUseProgram(msdfFixerShader->programId());
+	/*glHelpers.glFuncs->glUseProgram(msdfFixerShader->programId());
 	newTex.bindAsImage(glHelpers.extraFuncs, 0, GL_READ_ONLY);
 	glHelpers.glFuncs->glUniform1i(fixer_tex_uniform1,0);
 	newTex3.bindAsImage(glHelpers.extraFuncs, 1, GL_WRITE_ONLY);
 	glHelpers.glFuncs->glUniform1i(fixer_tex_uniform2,1);
 	glHelpers.extraFuncs->glDispatchCompute(args.internalProcessSize,args.internalProcessSize,1);
-	glHelpers.extraFuncs->glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+	glHelpers.extraFuncs->glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);*/
 	std::vector<RGBA8888> areTheyInside = newTex2.getTextureAs<RGBA8888>();
 	// We need HugePreallocator!
-	std::vector<glm::fvec4> rawDistances = newTex3.getTextureAs<glm::fvec4>();
+	//std::vector<glm::fvec4> rawDistances = newTex3.getTextureAs<glm::fvec4>();
+	std::vector<glm::fvec4> rawDistances = newTex.getTextureAs<glm::fvec4>();
 	//std::vector<Rgba8,HugePreallocator<Rgba8>> rawDistances = newTex.getTextureAs<Rgba8,HugePreallocator<Rgba8>>();
 	//std::vector<Rgba8> rawDistances = newTex.getTextureAs<Rgba8>();
 	glm::fvec3 maxDistIn(std::numeric_limits<float>::lowest());

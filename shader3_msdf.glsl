@@ -56,7 +56,8 @@ float distanceToQuadraticBezier(float maxDistance, vec2 p, vec2 p1, vec2 p2, vec
 	float t = float(i) / float(STEPS);
 	float t1 = 1.0 - t;
 	vec2 pt = t1 * t1 * p1 + 2.0 * t1 * t * p2 + t * t * p3;
-	minDist = min(minDist, DISTANCE_FUNC(p, pt));
+        float dst = DISTANCE_FUNC(p, pt);
+        if(abs(dst) <= minDist) minDist = dst;
     }
     return minDist;
 }
@@ -68,7 +69,8 @@ float distanceToCubicBezier(float maxDistance, vec2 p, vec2 p1, vec2 p2, vec2 p3
 	float t = float(i) / float(STEPS);
 	float t1 = 1.0 - t;
 	vec2 pt = t1*t1*t1*p1 + 3.0*t1*t1*t*p2 + 3.0*t1*t*t*p3 + t*t*t*p4;
-	minDist = min(minDist, DISTANCE_FUNC(p, pt));
+        float dst = DISTANCE_FUNC(p, pt);
+        if(abs(dst) <= minDist) minDist = dst;
     }
     return minDist;
 }
@@ -88,22 +90,17 @@ float calculateDistance(float maxDistance, vec2 pos, uint i)
     }
     return distance;
 }
-// 2D cross product (returns scalar)
 
-// Linear interpolation helper
 vec2 lerp(vec2 a, vec2 b, float t) {
     return mix(a, b, t);
 }
 
-// Quadratic Bézier point calculation
 vec2 bezier2(vec2 p0, vec2 p1, vec2 p2, float t) {
     vec2 a = lerp(p0, p1, t);
     vec2 b = lerp(p1, p2, t);
     return lerp(a, b, t);
 }
 
-
-// Cubic Bézier point calculation
 vec2 bezier3(vec2 p0, vec2 p1, vec2 p2, vec2 p3, float t) {
     vec2 a = lerp(p0, p1, t);
     vec2 b = lerp(p1, p2, t);
@@ -113,7 +110,6 @@ vec2 bezier3(vec2 p0, vec2 p1, vec2 p2, vec2 p3, float t) {
     return lerp(d, e, t);
 }
 
-// Distance to line segment
 float distanceToLinePseudo(vec2 p, vec2 a, vec2 b) {
     vec2 pa = p - a;
     vec2 ba = b - a;
@@ -122,94 +118,99 @@ float distanceToLinePseudo(vec2 p, vec2 a, vec2 b) {
     return DISTANCE_FUNC(p, nearest);
 }
 
-// Approximate distance to quadratic Bézier (using subdivision)
-float distanceToQuadraticPseudo(vec2 p, vec2 p0, vec2 p1, vec2 p2, out vec2 closestPoint) {
+float distanceToQuadraticPseudo(vec2 p, vec2 p0, vec2 p1, vec2 p2, out vec2 closestPoint, out float closestT) {
     int SUBDIVISIONS = imageSize(rawSdfTexture).x / 4;
     float minDist = 1e20;
     float subdRecipr = 1.0 / float(SUBDIVISIONS);
 
     vec2 prev = p0;
+    closestT = 0.0;
 
     for (int i = 1; i <= SUBDIVISIONS; ++i) {
-	float t = float(i) * subdRecipr;
-	vec2 curr = bezier2(p0, p1, p2, t);
-	float dist = distanceToLinePseudo(p, prev, curr);
-	if (dist < minDist) {
-	    minDist = dist;
-	    closestPoint = 0.5 * (prev + curr); // Midpoint of segment
-	}
-	prev = curr;
+        float t = float(i) * subdRecipr;
+        vec2 curr = bezier2(p0, p1, p2, t);
+        float dist = distanceToLinePseudo(p, prev, curr);
+        if (abs(dist) <= minDist) {
+            minDist = dist;
+            closestPoint = 0.5 * (prev + curr);
+            closestT = t - 0.5 * subdRecipr;
+        }
+        prev = curr;
     }
 
     return minDist;
 }
 
-
-// Approximate distance to cubic Bézier (using subdivision)
-float distanceToCubicPseudo(vec2 p, vec2 p0, vec2 p1, vec2 p2, vec2 p3, out vec2 closestPoint) {
+float distanceToCubicPseudo(vec2 p, vec2 p0, vec2 p1, vec2 p2, vec2 p3, out vec2 closestPoint, out float closestT) {
     int SUBDIVISIONS = imageSize(rawSdfTexture).x / 4;
     float minDist = 1e20;
     float subdRecipr = 1.0 / float(SUBDIVISIONS);
 
     vec2 prev = p0;
+    closestT = 0.0;
 
     for (int i = 1; i <= SUBDIVISIONS; ++i) {
-	float t = float(i) * subdRecipr;
-	vec2 curr = bezier3(p0, p1, p2, p3, t);
-	float dist = distanceToLinePseudo(p, prev, curr);
-	if (dist < minDist) {
-	    minDist = dist;
-	    closestPoint = 0.5 * (prev + curr); // Midpoint of segment
-	}
-	prev = curr;
+        float t = float(i) * subdRecipr;
+        vec2 curr = bezier3(p0, p1, p2, p3, t);
+        float dist = distanceToLinePseudo(p, prev, curr);
+        if (abs(dist) <= minDist) {
+            minDist = dist;
+            closestPoint = 0.5 * (prev + curr);
+            closestT = t - 0.5 * subdRecipr;
+        }
+        prev = curr;
     }
 
     return minDist;
 }
 
-// Main signed distance function
 float signedDistancePseudo(vec2 p, EdgeSegment edge) {
-    int SUBDIVISIONS = imageSize(rawSdfTexture).x / 4;
-
     if (edge.type == LINEAR) {
-	vec2 a = edge.points[0];
-	vec2 b = edge.points[1];
-	float dist = distanceToLinePseudo(p, a, b);
-	vec2 dir = b - a;
-	vec2 perp = vec2(-dir.y, dir.x);
-	float sign = dot(p - a, perp);
-	return sign >= 0.0 ? dist : -dist;
+        vec2 a = edge.points[0];
+        vec2 b = edge.points[1];
+        float dist = distanceToLinePseudo(p, a, b);
+        vec2 dir = normalize(b - a);
+        vec2 normal = vec2(-dir.y, dir.x);
+        float sign = dot(p - a, normal);
+        return sign >= 0.0 ? dist : -dist;
     }
 
     else if (edge.type == QUADRATIC) {
-	vec2 closest;
-	float dist = distanceToQuadraticPseudo(p, edge.points[0], edge.points[1], edge.points[2], closest);
+        vec2 closest;
+        float t;
+        float dist = distanceToQuadraticPseudo(p, edge.points[0], edge.points[1], edge.points[2], closest, t);
 
-	// Estimate normal via derivative
-	float epsilon = 1e-3;
-	vec2 a = bezier2(edge.points[0], edge.points[1], edge.points[2], 0.5 - epsilon);
-	vec2 b = bezier2(edge.points[0], edge.points[1], edge.points[2], 0.5 + epsilon);
-	vec2 tangent = normalize(b - a);
-	vec2 normal = vec2(-tangent.y, tangent.x);
-	float sign = dot(p - closest, normal);
-	return sign >= 0.0 ? dist : -dist;
+        // Analytical tangent of quadratic Bezier
+        vec2 d1 = edge.points[1] - edge.points[0];
+        vec2 d2 = edge.points[2] - edge.points[1];
+        vec2 tangent = 2.0 * mix(d1, d2, t);
+        float len2 = dot(tangent, tangent);
+        if (len2 < 1e-6)
+            return dist; // Unsure of sign, return unsigned distance
+        vec2 normal = vec2(-tangent.y, tangent.x);
+        float sign = sign(tangent.x * (p.y - closest.y) - tangent.y * (p.x - closest.x));
+        return sign * dist;
     }
 
     else if (edge.type == CUBIC) {
-	vec2 closest;
-	float dist = distanceToCubicPseudo(p, edge.points[0], edge.points[1], edge.points[2], edge.points[3], closest);
+        vec2 closest;
+        float t;
+        float dist = distanceToCubicPseudo(p, edge.points[0], edge.points[1], edge.points[2], edge.points[3], closest, t);
 
-	// Estimate normal via derivative
-	float epsilon = 1e-3;
-	vec2 a = bezier3(edge.points[0], edge.points[1], edge.points[2], edge.points[3], 0.5 - epsilon);
-	vec2 b = bezier3(edge.points[0], edge.points[1], edge.points[2], edge.points[3], 0.5 + epsilon);
-	vec2 tangent = normalize(b - a);
-	vec2 normal = vec2(-tangent.y, tangent.x);
-	float sign = dot(p - closest, normal);
-	return sign >= 0.0 ? dist : -dist;
+        // Analytical tangent of cubic Bezier
+        vec2 d10 = edge.points[1] - edge.points[0];
+        vec2 d21 = edge.points[2] - edge.points[1];
+        vec2 d32 = edge.points[3] - edge.points[2];
+        vec2 tangent = 3.0 * mix(mix(d10, d21, t), mix(d21, d32, t), t);
+        float len2 = dot(tangent, tangent);
+        if (len2 < 1e-6)
+            return dist; // Unsure of sign, return unsigned distance
+        vec2 normal = vec2(-tangent.y, tangent.x);
+        float sign = sign(tangent.x * (p.y - closest.y) - tangent.y * (p.x - closest.x));
+        return sign * dist;
     }
 
-    return 1e20; // fallback
+    return 1e20;
 }
 
 int calculateWindingFor(vec2 pos, uint i) {
@@ -330,9 +331,9 @@ void main(void) {
 
     // Compute winding based on the contour of the closest edge per channel
     ivec4 winding = ivec4(0);
-    if (closestContourIds.r >= 0) winding.r = calculateWindingForContour(pos, closestContourIds.r);
-    if (closestContourIds.g >= 0) winding.g = calculateWindingForContour(pos, closestContourIds.g);
-    if (closestContourIds.b >= 0) winding.b = calculateWindingForContour(pos, closestContourIds.b);
+    if (closestEdgeIds.r >= 0) winding.r = calculateWindingFor(pos, closestEdgeIds.r);
+    if (closestEdgeIds.g >= 0) winding.g = calculateWindingFor(pos, closestEdgeIds.g);
+    if (closestEdgeIds.b >= 0) winding.b = calculateWindingFor(pos, closestEdgeIds.b);
     winding.a = calculateWinding(pos); // Global winding for all contours
 
 
@@ -343,11 +344,11 @@ void main(void) {
         closestEdgeIds.b >= 0 ? signedDistancePseudo(pos, edges[closestEdgeIds.b]) : maxDistance,
         winding.a <= 0 ? -minDistance.a : minDistance.a
     );
-    minDistance.r = abs(clamp(minDistance.r, -realMaxDistance, realMaxDistance));
-    minDistance.g = abs(clamp(minDistance.g, -realMaxDistance, realMaxDistance));
-    minDistance.b = abs(clamp(minDistance.b, -realMaxDistance, realMaxDistance));
+    minDistance.r = clamp(minDistance.r, -realMaxDistance, realMaxDistance);
+    minDistance.g = clamp(minDistance.g, -realMaxDistance, realMaxDistance);
+    minDistance.b = clamp(minDistance.b, -realMaxDistance, realMaxDistance);
     minDistance.a = abs(clamp(minDistance.a, -realMaxDistance, realMaxDistance));
-    if(winding.a <= 0) minDistance = minDistance * -1.0;
+    if(winding.a == 0) minDistance.a = minDistance.a * -1.0;
     imageStore(rawSdfTexture, threadId, minDistance);
     imageStore(isInsideTex, threadId, vec4(
         float(winding.r != 0),

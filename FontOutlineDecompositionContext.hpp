@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <array>
 #include <vector>
+#include <span>
 enum EdgeType : int32_t {
 	LINEAR, // A line segment. Only first two points are relevant.
 	QUADRATIC, // A quadratic Bezier curve. Only first three points are relevant.
@@ -29,6 +30,13 @@ enum CubicPart {
 	CUBIC_P2 = 3
 };
 
+enum Orientation {
+	CW,      // Clockwise
+	CCW,     // Counterclockwise
+	COLINEAR // Colinear
+};
+Orientation checkOrientation(const glm::fvec2& A, const glm::fvec2& B);
+
 struct EdgeSegment {
 	EdgeType type;
 	int32_t shapeId;
@@ -39,14 +47,18 @@ struct EdgeSegment {
 	float getMinY() const;
 	float getMaxX() const;
 	float getMaxY() const;
+	void invert();
+	Orientation checkOrientation() const;
 };
 
 struct FontOutlineDecompositionContext {
 	typedef std::vector<std::vector<size_t>> IdShapeMap;
 	typedef std::function<void(const IdShapeMap&)> IdShapeMapIterator;
-	glm::fvec2 curPos;
+	glm::fvec2 curPos = glm::fvec2(0.0f, 0.0f);
+	glm::fvec2 firstPointInContour = glm::fvec2(0.0f, 0.0f);
 	std::vector<EdgeSegment> edges;
 	int32_t curShapeId = 0;
+	void closeShape();
 	int moveTo(const glm::fvec2& to);
 	int lineTo(const glm::fvec2& to);
 	int conicTo(const glm::fvec2& control, const glm::fvec2&  to);
@@ -55,7 +67,10 @@ struct FontOutlineDecompositionContext {
 	void translateToNewSize(unsigned nWidth, unsigned nHeight, unsigned paddingX, unsigned paddingY, double metricWidth, double metricHeight, double horiBearingX, double horiBearingY);
 	bool isWithinBoundingBox(unsigned xOffset, unsigned yOffset, unsigned width, unsigned height);
 	void iterateOverContours(const IdShapeMapIterator& shapeIterator) const;
+	static float computeSignedArea(const std::span<const EdgeSegment>& contourEdges, int subdivisions = 20);
+	void makeShapeIdsSigend(bool flip = false);
 	void assignColours();
+	void clear();
 };
 
 #endif // FONTOUTLINEDECOMPOSITIONCONTEXT_HPP

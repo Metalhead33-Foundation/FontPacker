@@ -10,9 +10,9 @@ float threshold = 1.0; // Tune this based on actual data; usually around 1.0 wor
 
 bool isFalseEdge(vec3 a, vec3 b) {
     int jumpCount = 0;
-    if (abs(a.r - b.r) > threshold && sign(a.r) != sign(b.r)) jumpCount++;
-    if (abs(a.g - b.g) > threshold && sign(a.g) != sign(b.g)) jumpCount++;
-    if (abs(a.b - b.b) > threshold && sign(a.b) != sign(b.b)) jumpCount++;
+    if (abs(a.r - b.r) >= threshold && sign(a.r) != sign(b.r)) jumpCount++;
+    if (abs(a.g - b.g) >= threshold && sign(a.g) != sign(b.g)) jumpCount++;
+    if (abs(a.b - b.b) >= threshold && sign(a.b) != sign(b.b)) jumpCount++;
     return jumpCount >= 2;
 }
 

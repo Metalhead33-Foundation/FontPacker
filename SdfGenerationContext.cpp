@@ -198,7 +198,7 @@ QImage SdfGenerationContext::dowsanmpleImageByMaxing(const QImage& src)
 void SdfGenerationContext::processOutlineGlyph(StoredCharacter& output, FT_GlyphSlot glyphSlot, const SDFGenerationArguments& args)
 {
 	output.valid = true;
-	if(decompositionContext.edges.size()) decompositionContext.edges.clear();
+	decompositionContext.clear();
 	output.width = glyphSlot->bitmap.width;
 	output.height = glyphSlot->bitmap.rows;
 	output.bearing_x = glyphSlot->bitmap_left;
@@ -213,7 +213,10 @@ void SdfGenerationContext::processOutlineGlyph(StoredCharacter& output, FT_Glyph
 	output.vertBearingX = convert26_6ToDouble(glyphSlot->metrics.vertBearingX);
 	output.vertBearingY = convert26_6ToDouble(glyphSlot->metrics.vertBearingY);
 	output.vertAdvance = convert26_6ToDouble(glyphSlot->metrics.vertAdvance);
+	auto orientation = FT_Outline_Get_Orientation(&glyphSlot->outline);
 	FT_Outline_Decompose(&glyphSlot->outline,&outlineFuncs,this);
+	decompositionContext.closeShape();
+	decompositionContext.makeShapeIdsSigend( orientation != FT_ORIENTATION_TRUETYPE);
 	decompositionContext.translateToNewSize(args.internalProcessSize,args.internalProcessSize,args.padding,args.padding, output.metricWidth, output.metricHeight, output.horiBearingX, output.horiBearingY);
 	decompositionContext.assignColours();
 
