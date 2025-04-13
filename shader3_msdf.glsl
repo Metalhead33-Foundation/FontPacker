@@ -227,7 +227,7 @@ int calculateWindingFor(vec2 pos, uint i) {
 	}
     }
     else if (edge.type == QUADRATIC || edge.type == CUBIC) {
-	const int CURVE_STEPS = 8;
+        const int CURVE_STEPS = imageSize(rawSdfTexture).x / 4;
 	vec2 prevPoint = edge.points[0];
 
 	for (int j = 1; j <= CURVE_STEPS; j++) {
@@ -343,10 +343,11 @@ void main(void) {
         closestEdgeIds.b >= 0 ? signedDistancePseudo(pos, edges[closestEdgeIds.b]) : maxDistance,
         winding.a <= 0 ? -minDistance.a : minDistance.a
     );
-    minDistance.r = clamp(minDistance.r, -realMaxDistance, realMaxDistance);
-    minDistance.g = clamp(minDistance.g, -realMaxDistance, realMaxDistance);
-    minDistance.b = clamp(minDistance.b, -realMaxDistance, realMaxDistance);
-    minDistance.a = clamp(minDistance.b, -realMaxDistance, realMaxDistance);
+    minDistance.r = abs(clamp(minDistance.r, -realMaxDistance, realMaxDistance));
+    minDistance.g = abs(clamp(minDistance.g, -realMaxDistance, realMaxDistance));
+    minDistance.b = abs(clamp(minDistance.b, -realMaxDistance, realMaxDistance));
+    minDistance.a = abs(clamp(minDistance.a, -realMaxDistance, realMaxDistance));
+    if(winding.a <= 0) minDistance = minDistance * -1.0;
     imageStore(rawSdfTexture, threadId, minDistance);
     imageStore(isInsideTex, threadId, vec4(
         float(winding.r != 0),
