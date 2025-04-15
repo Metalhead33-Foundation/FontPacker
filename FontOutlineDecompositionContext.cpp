@@ -61,7 +61,7 @@ inline EdgeSegment convertQuadraticToCubic(const EdgeSegment& quad) {
 	glm::fvec2 c1 = mix(p0, c, 2.0f / 3.0f);
 	glm::fvec2 c2 = mix(c, p1, 1.0f / 3.0f);
 
-	return {CUBIC, quad.contourId, quad.clr, 0, {p0, c1, c2, p1}};
+	return {EdgeType::CUBIC, quad.contourId, quad.clr, 0, {p0, c1, c2, p1}};
 }
 inline void splitLinearInThirds(const EdgeSegment& seg, EdgeSegment& part0, EdgeSegment& part1, EdgeSegment& part2) {
 	glm::fvec2 p0 = seg.points[0];
@@ -69,9 +69,9 @@ inline void splitLinearInThirds(const EdgeSegment& seg, EdgeSegment& part0, Edge
 	glm::fvec2 a = mix(p0, p1, 1.0f/3.0f);
 	glm::fvec2 b = mix(p0, p1, 2.0f/3.0f);
 
-	part0 = {LINEAR, seg.contourId, seg.clr, 0, {p0, a, {}, {}}};
-	part1 = {LINEAR, seg.contourId, seg.clr, 0, {a, b, {}, {}}};
-	part2 = {LINEAR, seg.contourId, seg.clr, 0, {b, p1, {}, {}}};
+	part0 = {EdgeType::LINEAR, seg.contourId, seg.clr, 0, {p0, a, {}, {}}};
+	part1 = {EdgeType::LINEAR, seg.contourId, seg.clr, 0, {a, b, {}, {}}};
+	part2 = {EdgeType::LINEAR, seg.contourId, seg.clr, 0, {b, p1, {}, {}}};
 }
 
 inline void splitQuadraticInThirds(const EdgeSegment& seg, EdgeSegment& part0, EdgeSegment& part1, EdgeSegment& part2) {
@@ -85,9 +85,9 @@ inline void splitQuadraticInThirds(const EdgeSegment& seg, EdgeSegment& part0, E
 	glm::fvec2 c2 = mix(c, p1, 2.0f/3.0f);
 	glm::fvec2 m1 = mix(mix(p0, c, 5.0f/9.0f), mix(c, p1, 4.0f/9.0f), 0.5f);
 
-	part0 = {QUADRATIC, seg.contourId, seg.clr, 0, {p0, c0, pt13, {}}};
-	part1 = {QUADRATIC, seg.contourId, seg.clr, 0, {pt13, m1, pt23, {}}};
-	part2 = {QUADRATIC, seg.contourId, seg.clr, 0, {pt23, c2, p1, {}}};
+	part0 = {EdgeType::QUADRATIC, seg.contourId, seg.clr, 0, {p0, c0, pt13, {}}};
+	part1 = {EdgeType::QUADRATIC, seg.contourId, seg.clr, 0, {pt13, m1, pt23, {}}};
+	part2 = {EdgeType::QUADRATIC, seg.contourId, seg.clr, 0, {pt23, c2, p1, {}}};
 }
 
 inline void splitCubicInThirds(const EdgeSegment& seg, EdgeSegment& part0, EdgeSegment& part1, EdgeSegment& part2) {
@@ -128,17 +128,17 @@ inline void splitCubicInThirds(const EdgeSegment& seg, EdgeSegment& part0, EdgeS
 
 	glm::fvec2 f = (c2 == p3) ? p3 : lerp(c2, p3, 2.0f/3.0f);
 
-	part0 = {CUBIC, seg.contourId, seg.clr, 0, {p0, a, b, p13}};
-	part1 = {CUBIC, seg.contourId, seg.clr, 0, {p13, d, e, p23}};
-	part2 = {CUBIC, seg.contourId, seg.clr, 0, {p23, f, p3 == c2 ? p3 : lerp(c2, p3, 2.0f/3.0f), p3}};
+	part0 = {EdgeType::CUBIC, seg.contourId, seg.clr, 0, {p0, a, b, p13}};
+	part1 = {EdgeType::CUBIC, seg.contourId, seg.clr, 0, {p13, d, e, p23}};
+	part2 = {EdgeType::CUBIC, seg.contourId, seg.clr, 0, {p23, f, p3 == c2 ? p3 : lerp(c2, p3, 2.0f/3.0f), p3}};
 }
 
 void EdgeSegment::splitIntoThree(EdgeSegment& a, EdgeSegment& b, EdgeSegment& c) const
 {
 	switch (type) {
-		case LINEAR: splitLinearInThirds(*this, a, b, c); break;
-		case QUADRATIC: splitQuadraticInThirds(*this, a, b, c); break;
-		case CUBIC: splitCubicInThirds(*this, a, b, c); break;
+		case EdgeType::LINEAR: splitLinearInThirds(*this, a, b, c); break;
+		case EdgeType::QUADRATIC: splitQuadraticInThirds(*this, a, b, c); break;
+		case EdgeType::CUBIC: splitCubicInThirds(*this, a, b, c); break;
 		default: break;
 	}
 }
@@ -148,13 +148,13 @@ float FontOutlineDecompositionContext::computeSignedArea(const std::span<const E
 	float area = 0.0f;
 
 	for (const auto& edge : contourEdges) {
-		if (edge.type == LINEAR) {
+		if (edge.type == EdgeType::LINEAR) {
 			const glm::vec2& a = edge.points[0];
 			const glm::vec2& b = edge.points[1];
 			area += (a.x * b.y - b.x * a.y); // Shoelace term
 		}
 
-		else if (edge.type == QUADRATIC) {
+		else if (edge.type == EdgeType::QUADRATIC) {
 			glm::vec2 prev = edge.points[0];
 			for (int i = 1; i <= subdivisions; ++i) {
 				float t = float(i) / subdivisions;
@@ -167,7 +167,7 @@ float FontOutlineDecompositionContext::computeSignedArea(const std::span<const E
 			}
 		}
 
-		else if (edge.type == CUBIC) {
+		else if (edge.type == EdgeType::CUBIC) {
 			glm::vec2 prev = edge.points[0];
 			for (int i = 1; i <= subdivisions; ++i) {
 				float t = float(i) / subdivisions;
@@ -410,9 +410,9 @@ int FontOutlineDecompositionContext::moveTo(const glm::fvec2& to)
 float EdgeSegment::getMinX() const
 {
 	switch (type) {
-		case LINEAR: return std::min(points[LINE_P1].x,points[LINE_P2].x);
-		case QUADRATIC: return std::min(points[QUADRATIC_P1].x,points[QUADRATIC_P2].x);
-		case CUBIC: return std::min(points[CUBIC_P1].x,points[CUBIC_P2].x);
+		case EdgeType::LINEAR: return std::min(points[LINE_P1].x,points[LINE_P2].x);
+		case EdgeType::QUADRATIC: return std::min(points[QUADRATIC_P1].x,points[QUADRATIC_P2].x);
+		case EdgeType::CUBIC: return std::min(points[CUBIC_P1].x,points[CUBIC_P2].x);
 		default: return 0;
 			break;
 	}
@@ -421,9 +421,9 @@ float EdgeSegment::getMinX() const
 float EdgeSegment::getMinY() const
 {
 	switch (type) {
-		case LINEAR: return std::min(points[LINE_P1].y,points[LINE_P2].y);
-		case QUADRATIC: return std::min(points[QUADRATIC_P1].y,points[QUADRATIC_P2].y);
-		case CUBIC: return std::min(points[CUBIC_P1].y,points[CUBIC_P2].y);
+		case EdgeType::LINEAR: return std::min(points[LINE_P1].y,points[LINE_P2].y);
+		case EdgeType::QUADRATIC: return std::min(points[QUADRATIC_P1].y,points[QUADRATIC_P2].y);
+		case EdgeType::CUBIC: return std::min(points[CUBIC_P1].y,points[CUBIC_P2].y);
 		default: return 0;
 			break;
 	}
@@ -432,9 +432,9 @@ float EdgeSegment::getMinY() const
 float EdgeSegment::getMaxX() const
 {
 	switch (type) {
-		case LINEAR: return std::max(points[LINE_P1].x,points[LINE_P2].x);
-		case QUADRATIC: return std::max(points[QUADRATIC_P1].x,points[QUADRATIC_P2].x);
-		case CUBIC: return std::max(points[CUBIC_P1].x,points[CUBIC_P2].x);
+		case EdgeType::LINEAR: return std::max(points[LINE_P1].x,points[LINE_P2].x);
+		case EdgeType::QUADRATIC: return std::max(points[QUADRATIC_P1].x,points[QUADRATIC_P2].x);
+		case EdgeType::CUBIC: return std::max(points[CUBIC_P1].x,points[CUBIC_P2].x);
 		default: return 0;
 			break;
 	}
@@ -443,9 +443,9 @@ float EdgeSegment::getMaxX() const
 float EdgeSegment::getMaxY() const
 {
 	switch (type) {
-		case LINEAR: return std::max(points[LINE_P1].y,points[LINE_P2].y);
-		case QUADRATIC: return std::max(points[QUADRATIC_P1].y,points[QUADRATIC_P2].y);
-		case CUBIC: return std::max(points[CUBIC_P1].y,points[CUBIC_P2].y);
+		case EdgeType::LINEAR: return std::max(points[LINE_P1].y,points[LINE_P2].y);
+		case EdgeType::QUADRATIC: return std::max(points[QUADRATIC_P1].y,points[QUADRATIC_P2].y);
+		case EdgeType::CUBIC: return std::max(points[CUBIC_P1].y,points[CUBIC_P2].y);
 		default: return 0;
 			break;
 	}
@@ -474,15 +474,15 @@ enum CubicPart {
 void EdgeSegment::invert()
 {
 	switch(type) {
-		case LINEAR:{
+		case EdgeType::LINEAR:{
 			std::swap(points[LINE_P1], points[LINE_P2]);
 			break;
 		}
-		case QUADRATIC:{
+		case EdgeType::QUADRATIC:{
 			std::swap(points[QUADRATIC_P1], points[QUADRATIC_P2]);
 			break;
 		}
-		case CUBIC: {
+		case EdgeType::CUBIC: {
 			std::swap(points[CUBIC_P1], points[CUBIC_P2]);
 			std::swap(points[CUBIC_CONTROL1], points[CUBIC_CONTROL2]);
 			break;
@@ -493,15 +493,15 @@ void EdgeSegment::invert()
 glm::fvec2 EdgeSegment::point(float param) const
 {
 	switch(type) {
-		case LINEAR:{
+		case EdgeType::LINEAR:{
 			return mix(points[0], points[1], param);
 			break;
 		}
-		case QUADRATIC:{
+		case EdgeType::QUADRATIC:{
 			return mix(mix(points[0], points[1], param), mix(points[1], points[2], param), param);
 			break;
 		}
-		case CUBIC: {
+		case EdgeType::CUBIC: {
 			glm::fvec2 p12 = mix(points[1], points[2], param);
 			return mix(mix(mix(points[0], points[1], param), p12, param), mix(p12, mix(points[2], points[3], param), param), param);
 			break;
@@ -512,16 +512,16 @@ glm::fvec2 EdgeSegment::point(float param) const
 glm::fvec2 EdgeSegment::direction(float param) const
 {
 	switch (type) {
-		case LINEAR: {
+		case EdgeType::LINEAR: {
 			return points[1]-points[0];
 		}
-		case QUADRATIC: {
+		case EdgeType::QUADRATIC: {
 			glm::fvec2 tangent = mix(points[1]-points[0], points[2]-points[1], param);
 			if ( std::abs(tangent.x) <= EPSILON && std::abs(tangent.y) <= EPSILON)
 				return points[2]-points[0];
 			return tangent;
 		}
-		case CUBIC: {
+		case EdgeType::CUBIC: {
 			glm::fvec2 tangent = mix(mix(points[1]-points[0], points[2]-points[1], param), mix(points[2]-points[1], points[3]-points[2], param), param);
 			if ( std::abs(tangent.x) <= EPSILON && std::abs(tangent.y) <= EPSILON) {
 				if (param == 0.0f) return points[2]-points[0];
@@ -537,13 +537,13 @@ glm::fvec2 EdgeSegment::direction(float param) const
 glm::fvec2 EdgeSegment::directionChange(float param) const
 {
 	switch (type) {
-		case LINEAR: {
+		case EdgeType::LINEAR: {
 			return glm::fvec2();
 		}
-		case QUADRATIC: {
+		case EdgeType::QUADRATIC: {
 			return (points[2]-points[1])-(points[1]-points[0]);
 		}
-		case CUBIC: {
+		case EdgeType::CUBIC: {
 			return mix((points[2]-points[1])-(points[1]-points[0]), (points[3]-points[2])-(points[2]-points[1]), param);
 		}
 		default:  {
@@ -558,15 +558,15 @@ Orientation checkCubicOrientation(const glm::fvec2& p1, const glm::fvec2& c1,con
 Orientation EdgeSegment::checkOrientation() const
 {
 	switch(type) {
-		case LINEAR:{
+		case EdgeType::LINEAR:{
 			return ::checkOrientation(points[LINE_P1], points[LINE_P2]);
 			break;
 		}
-		case QUADRATIC:{
+		case EdgeType::QUADRATIC:{
 			return ::checkQuadraticOrientation(points[QUADRATIC_P1], points[QUADRATIC_CONTROL], points[QUADRATIC_P2]);
 			break;
 		}
-		case CUBIC: {
+		case EdgeType::CUBIC: {
 			return ::checkCubicOrientation(points[CUBIC_P1], points[CUBIC_CONTROL1], points[CUBIC_CONTROL2], points[CUBIC_P2]);
 			break;
 		}
@@ -577,9 +577,9 @@ Orientation EdgeSegment::checkOrientation() const
 void EdgeSegment::deconverge(int param, const glm::fvec2& vector)
 {
 	switch (type) {
-		case LINEAR: return;
-		case QUADRATIC: *this = convertQuadraticToCubic(*this); break;
-		case CUBIC: break;
+		case EdgeType::LINEAR: return;
+		case EdgeType::QUADRATIC: *this = convertQuadraticToCubic(*this); break;
+		case EdgeType::CUBIC: break;
 			break;
 	}
 	switch (param) {
@@ -660,7 +660,7 @@ int EdgeSegment::scanlineIntersections(double x[], int dy[], double y) const
 {
 	auto& p = points;
 	switch (type) {
-		case LINEAR: {
+		case EdgeType::LINEAR: {
 			if ((y >= points[0].y && y < points[1].y) || (y >= points[1].y && y < points[0].y)) {
 				double param = (y-points[0].y)/(points[1].y-points[0].y);
 				x[0] = mix(points[0].x, points[1].x, param);
@@ -669,7 +669,7 @@ int EdgeSegment::scanlineIntersections(double x[], int dy[], double y) const
 			}
 			return 0;
 		}
-		case QUADRATIC: {
+		case EdgeType::QUADRATIC: {
 			int total = 0;
 			int nextDY = y > p[0].y ? 1 : -1;
 			x[total] = p[0].x;
@@ -722,7 +722,7 @@ int EdgeSegment::scanlineIntersections(double x[], int dy[], double y) const
 			}
 			return total;
 		}
-		case CUBIC:  {
+		case EdgeType::CUBIC:  {
 			int total = 0;
 			int nextDY = y > p[0].y ? 1 : -1;
 			x[total] = p[0].x;
@@ -791,7 +791,7 @@ int FontOutlineDecompositionContext::lineTo(const glm::fvec2& to)
 {
 	stagingEdges.resize(stagingEdges.size() + 1);
 	auto& edge = stagingEdges.back();
-	edge.type = LINEAR;
+	edge.type = EdgeType::LINEAR;
 	zeroOut(edge.points);
 	edge.contourId = curShapeId;
 	edge.points[LINE_P1] = curPos;
@@ -804,7 +804,7 @@ int FontOutlineDecompositionContext::conicTo(const glm::fvec2& control, const gl
 {
 	stagingEdges.resize(stagingEdges.size() + 1);
 	auto& edge = stagingEdges.back();
-	edge.type = QUADRATIC;
+	edge.type = EdgeType::QUADRATIC;
 	zeroOut(edge.points);
 	edge.contourId = curShapeId;
 	edge.points[QUADRATIC_P1] = curPos;
@@ -818,7 +818,7 @@ int FontOutlineDecompositionContext::cubicTo(const glm::fvec2& control1, const g
 {
 	stagingEdges.resize(stagingEdges.size() + 1);
 	auto& edge = stagingEdges.back();
-	edge.type = CUBIC;
+	edge.type = EdgeType::CUBIC;
 	zeroOut(edge.points);
 	edge.contourId = curShapeId;
 	edge.points[CUBIC_P1] = curPos;
@@ -944,28 +944,157 @@ void FontOutlineDecompositionContext::iterateOverContours(const IdShapeMapIterat
 	shapeIterator(idShapeMap);
 }
 
+enum EdgeColorMSDFGEn {
+	BLACK = 0,
+	RED = 1,
+	GREEN = 2,
+	YELLOW = 3,
+	BLUE = 4,
+	MAGENTA = 5,
+	CYAN = 6,
+	WHITE = 7
+};
+const std::array<EdgeColor,EdgeColorMSDFGEn::WHITE+1> PALETTE = {
+	EdgeColor::BLACK, EdgeColor::RED, EdgeColor::GREEN, EdgeColor::YELLOW, EdgeColor::BLUE, EdgeColor::MAGENTA, EdgeColor::CYAN, EdgeColor::WHITE
+};
+
+// More black magic from MSDFGen
+
+static int symmetricalTrichotomy(int position, int n) {
+	return int(3+2.875*position/(n-1)-1.4375+.5)-3;
+}
+
+static bool isCorner(const glm::fvec2 &aDir, const glm::fvec2 &bDir, double crossThreshold) {
+	return glm::dot(aDir, bDir) <= 0 || fabs(crossProduct(aDir, bDir)) > crossThreshold;
+}
+#define MSDFGEN_EDGE_LENGTH_PRECISION 4
+static double estimateEdgeLength(const EdgeSegment *edge) {
+	double len = 0;
+	glm::fvec2 prev = edge->point(0);
+	for (int i = 1; i <= MSDFGEN_EDGE_LENGTH_PRECISION; ++i) {
+		glm::fvec2 cur = edge->point(1./MSDFGEN_EDGE_LENGTH_PRECISION*i);
+		len += (cur-prev).length();
+		prev = cur;
+	}
+	return len;
+}
+
+static int seedExtract2(unsigned long long &seed) {
+	int v = int(seed)&1;
+	seed >>= 1;
+	return v;
+}
+
+static int seedExtract3(unsigned long long &seed) {
+	int v = int(seed%3);
+	seed /= 3;
+	return v;
+}
+
+static EdgeColorMSDFGEn initColor(unsigned long long &seed) {
+	static const EdgeColorMSDFGEn colors[3] = { CYAN, MAGENTA, YELLOW };
+	return colors[seedExtract3(seed)];
+}
+
+static void switchColor(EdgeColorMSDFGEn &color, unsigned long long &seed) {
+	int shifted = color<<(1+seedExtract2(seed));
+	color = EdgeColorMSDFGEn((shifted|shifted>>3)&WHITE);
+}
+
+static void switchColor(EdgeColorMSDFGEn &color, unsigned long long &seed, EdgeColorMSDFGEn banned) {
+	EdgeColorMSDFGEn combined = EdgeColorMSDFGEn(color&banned);
+	if (combined == RED || combined == GREEN || combined == BLUE)
+		color = EdgeColorMSDFGEn(combined^WHITE);
+	else
+		switchColor(color, seed);
+}
+
 void FontOutlineDecompositionContext::assignColours()
 {
 	iterateOverContours( [this](const IdShapeMap& idMap) {
 		for( const auto& c : idMap ) {
 			uint32_t current;
 			if( c.size() <= 1 ) {
-				current = 0xFFFFFF;
+				current = static_cast<uint32_t>(EdgeColor::WHITE);
 				edges[c[0]].clr = current;
 			} else {
-				current = 0xFF00FF;
+				current = static_cast<uint32_t>(EdgeColor::MAGENTA);
 			}
 			for( const size_t e : c ) {
 				edges[e].clr = current;
-				if( current == 0xFFFF00 ) {
-					current = 0x00FFFF;
+				if( current == static_cast<uint32_t>(EdgeColor::YELLOW) ) {
+					current = static_cast<uint32_t>(EdgeColor::CYAN);
 				}
 				else {
-					current = 0xFFFF00;
+					current = static_cast<uint32_t>(EdgeColor::YELLOW);
 				}
 			}
 		}
 	} );
+}
+
+void FontOutlineDecompositionContext::assignColoursMsdfgen(double angleThreshold, unsigned long long seed)
+{
+	double crossThreshold = sin(angleThreshold);
+	EdgeColorMSDFGEn color = initColor(seed);
+	std::vector<int> corners;
+	auto contours = produceContourVecetor();
+	for(const auto& contour : contours) {
+		auto edges = getEdgeSegmentsForContour(contour);
+		// Black magic to count corners?
+		{
+			corners.clear();
+			glm::fvec2 prevDirection = edges.back().direction(1);
+			int index = 0;
+			for (auto edge = edges.begin(); edge != edges.end(); ++edge, ++index) {
+				if (isCorner(glm::normalize(prevDirection), glm::normalize((*edge).direction(0)), crossThreshold))
+					corners.push_back(index);
+				prevDirection = (*edge).direction(1);
+			}
+		}
+		// Smooth contour
+		if (corners.empty()) {
+			switchColor(color, seed);
+			for (auto edge = edges.begin(); edge != edges.end(); ++edge)
+				(*edge).clr = color;
+		}
+		 // "Teardrop" case
+		else if (corners.size() == 1)
+		{
+			EdgeColorMSDFGEn colors[3];
+			switchColor(color, seed);
+			colors[0] = color;
+			colors[1] = WHITE;
+			switchColor(color, seed);
+			colors[2] = color;
+			int corner = corners[0];
+			{
+				int m = (int) edges.size();
+				for (int i = 0; i < m; ++i)
+					edges[(corner+i)%m].clr = colors[1+symmetricalTrichotomy(i, m)];
+			}
+		}
+		// Multiple corners
+		else {
+			int cornerCount = (int) corners.size();
+			int spline = 0;
+			int start = corners[0];
+			int m = (int)edges.size();
+			switchColor(color, seed);
+			EdgeColorMSDFGEn initialColor = color;
+			for (int i = 0; i < m; ++i) {
+				int index = (start+i)%m;
+				if (spline+1 < cornerCount && corners[spline+1] == index) {
+					++spline;
+					switchColor(color, seed, EdgeColorMSDFGEn((spline == cornerCount-1)*initialColor));
+				}
+				edges[index].clr = color;
+			}
+		}
+	}
+	for(auto& zt : edges) {
+		zt.clr = static_cast<uint32_t>(PALETTE[zt.clr]);
+	}
 }
 
 void FontOutlineDecompositionContext::clear()
@@ -982,19 +1111,19 @@ Orientation checkOrientation(const glm::fvec2& A, const glm::fvec2& B)
 	float cross = A.x * B.y - A.y * B.x;
 
 	if (cross > 0.0f) {
-		return CCW;
+		return Orientation::CCW;
 	} else if (cross < 0.0f) {
-		return CW;
+		return Orientation::CW;
 	} else {
-		return COLINEAR;
+		return Orientation::COLINEAR;
 	}
 }
 Orientation checkOrientation(const glm::fvec2& A, const glm::fvec2& B, const glm::fvec2& C) {
 	const float cross = (B.x - A.x) * (C.y - A.y) - (B.y - A.y) * (C.x - A.x);
 
-	if (cross > EPSILON ) return CCW;
-	if (cross < -EPSILON) return CW;
-	return COLINEAR;
+	if (cross > EPSILON ) return Orientation::CCW;
+	if (cross < -EPSILON) return Orientation::CW;
+	return Orientation::COLINEAR;
 }
 
 Orientation checkQuadraticOrientation(const glm::fvec2& p1, const glm::fvec2& control, const glm::fvec2& p2) {
@@ -1013,7 +1142,7 @@ Orientation checkCubicOrientation(const glm::fvec2& p1, const glm::fvec2& c1,
 	const Orientation endOrientation = checkOrientation(c1, c2, p2);
 
 	// If control polygon is consistent, use that
-	if (ctrlPolyOrientation == endOrientation && ctrlPolyOrientation != COLINEAR) {
+	if (ctrlPolyOrientation == endOrientation && ctrlPolyOrientation != Orientation::COLINEAR) {
 		return ctrlPolyOrientation;
 	}
 
@@ -1024,8 +1153,8 @@ Orientation checkCubicOrientation(const glm::fvec2& p1, const glm::fvec2& c1,
 
 	const float cross = initialDerivative.x * secondDerivative.y - initialDerivative.y * secondDerivative.x;
 
-	if (cross > EPSILON) return CCW;
-	if (cross < -EPSILON) return CW;
+	if (cross > EPSILON) return Orientation::CCW;
+	if (cross < -EPSILON) return Orientation::CW;
 
 	// Fallback to checking the endpoints if everything else is colinear
 	return checkOrientation(p1, p1 + initialDerivative, p2);

@@ -7,7 +7,7 @@
 #include <vector>
 #include <span>
 #include <map>
-enum EdgeType : int32_t {
+enum class EdgeType : int32_t {
 	LINEAR, // A line segment. Only first two points are relevant.
 	QUADRATIC, // A quadratic Bezier curve. Only first three points are relevant.
 	CUBIC // A cubic Bezier curve. All four points are relevant.
@@ -31,7 +31,18 @@ enum CubicPart {
 	CUBIC_P2 = 3
 };
 
-enum Orientation {
+enum class EdgeColor : uint32_t {
+	BLACK = 0x000000,
+	RED = 0xFF0000,
+	GREEN = 0x00FF00,
+	YELLOW = 0xFFFF00,
+	BLUE = 0x0000FF,
+	MAGENTA = 0xFF00FF,
+	CYAN = 0x00FFFF,
+	WHITE = 0xFFFFFF
+};
+
+enum class Orientation {
 	CW = 0,      // Clockwise
 	CCW = 1,     // Counterclockwise
 	COLINEAR = 2 // Colinear
@@ -90,6 +101,7 @@ struct FontOutlineDecompositionContext {
 	void orientContours();
 	void makeShapeIdsSigend(bool flip = false);
 	void assignColours();
+	void assignColoursMsdfgen(double angleThreshold = 3.0, unsigned long long seed = 1942);
 	void clear();
 };
 

@@ -303,14 +303,16 @@ void main(void) {
 
     // Find closest edge per channel and track contour IDs
     vec4 minDistance = vec4(maxDistance);
-    ivec3 closestEdgeIds = ivec3(-1);
-    ivec3 closestContourIds = ivec3(-1);
+    ivec4 closestEdgeIds = ivec4(-1);
+    ivec4 closestContourIds = ivec4(-1);
     for (int i = 0; i < edges.length(); ++i) {
 	EdgeSegment edge = edges[i];
 	vec3 clr = unpackRGB(edge.clr);
 	float dist = calculateDistance(maxDistance, pos, i);
         if (dist <= minDistance.a) {
             minDistance.a = dist;
+            closestEdgeIds.a = i;
+            closestContourIds.a = edge.shapeId;
         }
         if (clr.r >= 0.003921568627451 && dist <= minDistance.r) {
 	    minDistance.r = dist;
@@ -348,6 +350,11 @@ void main(void) {
     minDistance.g = clamp(minDistance.g, -realMaxDistance, realMaxDistance);
     minDistance.b = clamp(minDistance.b, -realMaxDistance, realMaxDistance);
     minDistance.a = abs(clamp(minDistance.a, -realMaxDistance, realMaxDistance));
+
+    /* FOR DEBUG! */
+    //minDistance.rgb = winding.a <= 0 ? (unpackRGB(edges[closestEdgeIds.a].clr) * -1.0) : unpackRGB(edges[closestEdgeIds.a].clr);
+    //minDistance.rgb = winding.a <= 0 ? (minDistance.rgb * -1.0) : minDistance.rgb;
+
     if(winding.a == 0) minDistance.a = minDistance.a * -1.0;
     imageStore(rawSdfTexture, threadId, minDistance);
     imageStore(isInsideTex, threadId, vec4(
