@@ -6,6 +6,7 @@
 #include <array>
 #include <vector>
 #include <span>
+#include <map>
 enum EdgeType : int32_t {
 	LINEAR, // A line segment. Only first two points are relevant.
 	QUADRATIC, // A quadratic Bezier curve. Only first three points are relevant.
@@ -51,16 +52,21 @@ struct EdgeSegment {
 	float getMaxX() const;
 	float getMaxY() const;
 	void invert();
+	glm::fvec2 point(float param=0.0f) const;
 	glm::fvec2 direction(float param=0.0f) const;
 	glm::fvec2 directionChange(float param=0.0f) const;
 	void splitIntoThree(EdgeSegment& a, EdgeSegment& b, EdgeSegment& c) const;
 	Orientation checkOrientation() const;
 	void deconverge(int param, const glm::fvec2& vector);
+	int scanlineIntersections(double x[], int dy[3], double y) const;
 };
 
 struct FontOutlineDecompositionContext {
 	typedef std::vector<std::vector<size_t>> IdShapeMap;
 	typedef std::function<void(const IdShapeMap&)> IdShapeMapIterator;
+	typedef std::pair<int32_t,int32_t> ContourDefinition;
+	typedef std::map<int32_t,ContourDefinition> ContourMap;
+	typedef std::vector<ContourDefinition> ContourVector;
 	glm::fvec2 curPos = glm::fvec2(0.0f, 0.0f);
 	glm::fvec2 firstPointInContour = glm::fvec2(0.0f, 0.0f);
 	std::vector<EdgeSegment> edges;
@@ -77,6 +83,11 @@ struct FontOutlineDecompositionContext {
 	void iterateOverContours(const IdShapeMapIterator& shapeIterator) const;
 	static float computeSignedArea(const std::span<const EdgeSegment>& contourEdges, int subdivisions = 20);
 	static void normalizeContour(std::vector<EdgeSegment>& contour);
+	ContourMap produceContourMap() const;
+	ContourVector produceContourVecetor() const;
+	std::span<EdgeSegment> getEdgeSegmentsForContour(const ContourDefinition& contour);
+	std::span<const EdgeSegment> getEdgeSegmentsForContour(const ContourDefinition& contour) const;
+	void orientContours();
 	void makeShapeIdsSigend(bool flip = false);
 	void assignColours();
 	void clear();

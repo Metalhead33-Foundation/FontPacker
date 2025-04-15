@@ -217,6 +217,7 @@ void SdfGenerationContext::processOutlineGlyph(StoredCharacter& output, FT_Glyph
 	FT_Outline_Decompose(&glyphSlot->outline,&outlineFuncs,this);
 	decompositionContext.closeShape();
 	decompositionContext.makeShapeIdsSigend( orientation != FT_ORIENTATION_TRUETYPE);
+	decompositionContext.orientContours();
 	decompositionContext.translateToNewSize(args.internalProcessSize,args.internalProcessSize,args.padding,args.padding, output.metricWidth, output.metricHeight, output.horiBearingX, output.horiBearingY);
 	decompositionContext.assignColours();
 

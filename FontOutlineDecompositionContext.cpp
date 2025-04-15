@@ -8,8 +8,15 @@
 
 #define EPSILON std::numeric_limits<float>::epsilon()
 
-inline glm::fvec2 mix(const glm::fvec2& a, const glm::fvec2& b, float t) {
-	return a * (1.0f - t) + b * t;
+/// Returns 1 for positive values, -1 for negative values, and 0 for zero.
+template <typename T>
+inline int sign(T n) {
+	return (T(0) < n)-(n < T(0));
+}
+/// Returns the weighted average of a and b.
+template <typename T, typename S>
+inline T mix(T a, T b, S weight) {
+	return T((S(1)-weight)*a+weight*b);
 }
 inline glm::vec2 lerp(const glm::vec2& a, const glm::vec2& b, float t) {
 	return mix(a, b, t);
@@ -197,8 +204,8 @@ void FontOutlineDecompositionContext::normalizeContour(std::vector<EdgeSegment>&
 			glm::fvec2 prevDir = glm::normalize((*prevEdge).direction(1));
 			glm::fvec2 curDir = glm::normalize((*edge).direction(0));
 			if (glm::dot(prevDir, curDir) < MSDFGEN_CORNER_DOT_EPSILON-1) {
-				double factor = DECONVERGE_OVERSHOOT*sqrt(1-(MSDFGEN_CORNER_DOT_EPSILON-1)*(MSDFGEN_CORNER_DOT_EPSILON-1))/(MSDFGEN_CORNER_DOT_EPSILON-1);
-				glm::fvec2 axis = glm::normalize(curDir-prevDir);
+				float factor = DECONVERGE_OVERSHOOT*sqrt(1-(MSDFGEN_CORNER_DOT_EPSILON-1)*(MSDFGEN_CORNER_DOT_EPSILON-1))/(MSDFGEN_CORNER_DOT_EPSILON-1);
+				glm::fvec2 axis = factor * glm::normalize(curDir-prevDir);
 				// Determine curve ordering using third-order derivative (t = 0) of crossProduct((*prevEdge)->point(1-t)-p0, (*edge)->point(t)-p0) where p0 is the corner (*edge)->point(0)
 				if (crossProduct((*prevEdge).directionChange(1), (*edge).direction(0))+crossProduct((*edge).directionChange(0), (*prevEdge).direction(1)) < 0)
 					axis = -axis;
@@ -210,18 +217,50 @@ void FontOutlineDecompositionContext::normalizeContour(std::vector<EdgeSegment>&
 	}
 }
 
-void FontOutlineDecompositionContext::makeShapeIdsSigend(bool flip)
+std::span<EdgeSegment> FontOutlineDecompositionContext::getEdgeSegmentsForContour(const ContourDefinition& contour)
 {
-	if(flip) {
-		for(auto& it : edges) it.invert();
-	}
+	return std::span<EdgeSegment>(&edges[contour.first], &edges[contour.second+1]);
+}
+
+std::span<const EdgeSegment> FontOutlineDecompositionContext::getEdgeSegmentsForContour(const ContourDefinition& contour) const
+{
+	return std::span<const EdgeSegment>(&edges[contour.first], &edges[contour.second+1]);
+}
+
+FontOutlineDecompositionContext::ContourVector FontOutlineDecompositionContext::produceContourVecetor() const
+{
 	int32_t maxShapeId = -1;
 	int32_t minShapeId = std::numeric_limits<int32_t>::max();
 	for(const auto& e : edges) {
 		maxShapeId = std::max(maxShapeId, e.contourId);
 		minShapeId = std::min(minShapeId, e.contourId);
 	}
-	std::map<int32_t,std::pair<int32_t,int32_t>> contourLimits;
+	ContourVector contourLimits;
+	for(int32_t shapeId = minShapeId; shapeId <= maxShapeId; ++shapeId) {
+		int32_t maxEdgeId = -1;
+		int32_t minEdgeId = std::numeric_limits<int32_t>::max();
+		bool insert = false;
+		for(int32_t i = 0; i < edges.size(); ++i) {
+			if(edges[i].contourId == shapeId) {
+				maxEdgeId = std::max(maxEdgeId,i);
+				minEdgeId = std::min(minEdgeId,i);
+				insert = true;
+			}
+		}
+		if(insert) contourLimits.push_back({ minEdgeId, maxEdgeId });
+	}
+	return contourLimits;
+}
+
+FontOutlineDecompositionContext::ContourMap FontOutlineDecompositionContext::produceContourMap() const
+{
+	int32_t maxShapeId = -1;
+	int32_t minShapeId = std::numeric_limits<int32_t>::max();
+	for(const auto& e : edges) {
+		maxShapeId = std::max(maxShapeId, e.contourId);
+		minShapeId = std::min(minShapeId, e.contourId);
+	}
+	ContourMap contourLimits;
 	for(int32_t shapeId = minShapeId; shapeId <= maxShapeId; ++shapeId) {
 		int32_t maxEdgeId = -1;
 		int32_t minEdgeId = std::numeric_limits<int32_t>::max();
@@ -233,8 +272,84 @@ void FontOutlineDecompositionContext::makeShapeIdsSigend(bool flip)
 		}
 		contourLimits[shapeId] = { minEdgeId, maxEdgeId };
 	}
+	return contourLimits;
+}
+
+void FontOutlineDecompositionContext::orientContours()
+{
+	struct Intersection {
+		double x;
+		int direction;
+		int contourIndex;
+
+		static int compare(const void *a, const void *b) {
+			return sign(reinterpret_cast<const Intersection *>(a)->x-reinterpret_cast<const Intersection *>(b)->x);
+		}
+	};
+
+	const double ratio = .5*(sqrt(5)-1); // an irrational number to minimize chance of intersecting a corner or other point of interest
+	auto contours = produceContourVecetor();
+	std::vector<int> orientations(contours.size());
+	std::vector<Intersection> intersections;
+	for (int i = 0; i < (int) contours.size(); ++i) {
+		std::span<EdgeSegment> contourEdges = getEdgeSegmentsForContour(contours[i]);
+		if (!orientations[i] && !contourEdges.empty()) {
+			// Find an Y that crosses the contour
+			double y0 = contourEdges.front().point(0).y;
+			double y1 = y0;
+
+			for( auto edge = contourEdges.begin(); edge != contourEdges.end() && y0 == y1 ; ++edge )
+				y1 = (*edge).point(1).y;
+
+			for (auto edge = contourEdges.begin(); edge != contourEdges.end() && y0 == y1; ++edge)
+				y1 = (*edge).point(ratio).y; // in case all endpoints are in a horizontal line
+
+			double y = mix(y0, y1, ratio);
+			// Scanline through whole shape at Y
+			double x[3];
+			int dy[3];
+			for (int j = 0; j < (int) contours.size(); ++j) {
+				std::span<EdgeSegment> contourEdges2 = getEdgeSegmentsForContour(contours[j]);
+				for (auto edge = contourEdges2.begin(); edge != contourEdges2.end(); ++edge) {
+					int n = (*edge).scanlineIntersections(x, dy, y);
+					for (int k = 0; k < n; ++k) {
+						Intersection intersection = { x[k], dy[k], j };
+						intersections.push_back(intersection);
+					}
+				}
+			}
+			if (!intersections.empty()) {
+				qsort(&intersections[0], intersections.size(), sizeof(Intersection), &Intersection::compare);
+				// Disqualify multiple intersections
+				for (int j = 1; j < (int) intersections.size(); ++j)
+					if (intersections[j].x == intersections[j-1].x)
+						intersections[j].direction = intersections[j-1].direction = 0;
+				// Inspect scanline and deduce orientations of intersected contours
+				for (int j = 0; j < (int) intersections.size(); ++j)
+					if (intersections[j].direction)
+						orientations[intersections[j].contourIndex] += 2*((j&1)^(intersections[j].direction > 0))-1;
+				intersections.clear();
+			}
+		}
+	}
+	// Reverse contours that have the opposite orientation
+	for (int i = 0; i < (int) contours.size(); ++i) {
+		if (orientations[i] < 0) {
+			std::span<EdgeSegment> contourEdges = getEdgeSegmentsForContour(contours[i]);
+			std::reverse(std::begin(contourEdges), std::end(contourEdges));
+			//contours[i].reverse();
+		}
+	}
+}
+
+void FontOutlineDecompositionContext::makeShapeIdsSigend(bool flip)
+{
+	if(flip) {
+		for(auto& it : edges) it.invert();
+	}
+	auto contourLimits = produceContourMap();
 	for( auto it = std::begin(contourLimits) ; it != std::end(contourLimits) ; ++it ) {
-		std::span<EdgeSegment> segment( &edges[it->second.first], &edges[it->second.second+1]);
+		std::span<EdgeSegment> segment = getEdgeSegmentsForContour(it->second);
 		float area = computeSignedArea(segment);
 		bool isCW = area > 0.0f;
 		/*int orientations[3] = { 0, 0, 0 };
@@ -375,6 +490,25 @@ void EdgeSegment::invert()
 	}
 }
 
+glm::fvec2 EdgeSegment::point(float param) const
+{
+	switch(type) {
+		case LINEAR:{
+			return mix(points[0], points[1], param);
+			break;
+		}
+		case QUADRATIC:{
+			return mix(mix(points[0], points[1], param), mix(points[1], points[2], param), param);
+			break;
+		}
+		case CUBIC: {
+			glm::fvec2 p12 = mix(points[1], points[2], param);
+			return mix(mix(mix(points[0], points[1], param), p12, param), mix(p12, mix(points[2], points[3], param), param), param);
+			break;
+		}
+	}
+}
+
 glm::fvec2 EdgeSegment::direction(float param) const
 {
 	switch (type) {
@@ -456,6 +590,200 @@ void EdgeSegment::deconverge(int param, const glm::fvec2& vector)
 			points[2] += glm::length(points[2]-points[3])*vector;
 			break;
 		default: break;
+	}
+}
+
+int solveQuadratic(double x[2], double a, double b, double c) {
+	// a == 0 -> linear equation
+	if (a == 0 || fabs(b) > 1e12*fabs(a)) {
+		// a == 0, b == 0 -> no solution
+		if (b == 0) {
+			if (c == 0)
+				return -1; // 0 == 0
+			return 0;
+		}
+		x[0] = -c/b;
+		return 1;
+	}
+	double dscr = b*b-4*a*c;
+	if (dscr > 0) {
+		dscr = sqrt(dscr);
+		x[0] = (-b+dscr)/(2*a);
+		x[1] = (-b-dscr)/(2*a);
+		return 2;
+	} else if (dscr == 0) {
+		x[0] = -b/(2*a);
+		return 1;
+	} else
+		return 0;
+}
+
+static int solveCubicNormed(double x[3], double a, double b, double c) {
+	double a2 = a*a;
+	double q = 1/9.*(a2-3*b);
+	double r = 1/54.*(a*(2*a2-9*b)+27*c);
+	double r2 = r*r;
+	double q3 = q*q*q;
+	a *= 1/3.;
+	if (r2 < q3) {
+		double t = r/sqrt(q3);
+		if (t < -1) t = -1;
+		if (t > 1) t = 1;
+		t = acos(t);
+		q = -2*sqrt(q);
+		x[0] = q*cos(1/3.*t)-a;
+		x[1] = q*cos(1/3.*(t+2*M_PI))-a;
+		x[2] = q*cos(1/3.*(t-2*M_PI))-a;
+		return 3;
+	} else {
+		double u = (r < 0 ? 1 : -1)*pow(fabs(r)+sqrt(r2-q3), 1/3.);
+		double v = u == 0 ? 0 : q/u;
+		x[0] = (u+v)-a;
+		if (u == v || fabs(u-v) < 1e-12*fabs(u+v)) {
+			x[1] = -.5*(u+v)-a;
+			return 2;
+		}
+		return 1;
+	}
+}
+
+int solveCubic(double x[3], double a, double b, double c, double d) {
+	if (a != 0) {
+		double bn = b/a;
+		if (fabs(bn) < 1e6) // Above this ratio, the numerical error gets larger than if we treated a as zero
+			return solveCubicNormed(x, bn, c/a, d/a);
+	}
+	return solveQuadratic(x, b, c, d);
+}
+
+int EdgeSegment::scanlineIntersections(double x[], int dy[], double y) const
+{
+	auto& p = points;
+	switch (type) {
+		case LINEAR: {
+			if ((y >= points[0].y && y < points[1].y) || (y >= points[1].y && y < points[0].y)) {
+				double param = (y-points[0].y)/(points[1].y-points[0].y);
+				x[0] = mix(points[0].x, points[1].x, param);
+				dy[0] = sign(points[1].y-points[0].y);
+				return 1;
+			}
+			return 0;
+		}
+		case QUADRATIC: {
+			int total = 0;
+			int nextDY = y > p[0].y ? 1 : -1;
+			x[total] = p[0].x;
+			if (p[0].y == y) {
+				if (p[0].y < p[1].y || (p[0].y == p[1].y && p[0].y < p[2].y))
+					dy[total++] = 1;
+				else
+					nextDY = 1;
+			}
+			{
+				glm::fvec2 ab = p[1]-p[0];
+				glm::fvec2 br = p[2]-p[1]-ab;
+				double t[2];
+				int solutions = solveQuadratic(t, br.y, 2*ab.y, p[0].y-y);
+				// Sort solutions
+				double tmp;
+				if (solutions >= 2 && t[0] > t[1])
+					tmp = t[0], t[0] = t[1], t[1] = tmp;
+				for (int i = 0; i < solutions && total < 2; ++i) {
+					if (t[i] >= 0 && t[i] <= 1) {
+						x[total] = p[0].x+2*t[i]*ab.x+t[i]*t[i]*br.x;
+						if (nextDY*(ab.y+t[i]*br.y) >= 0) {
+							dy[total++] = nextDY;
+							nextDY = -nextDY;
+						}
+					}
+				}
+			}
+			if (p[2].y == y) {
+				if (nextDY > 0 && total > 0) {
+					--total;
+					nextDY = -1;
+				}
+				if ((p[2].y < p[1].y || (p[2].y == p[1].y && p[2].y < p[0].y)) && total < 2) {
+					x[total] = p[2].x;
+					if (nextDY < 0) {
+						dy[total++] = -1;
+						nextDY = 1;
+					}
+				}
+			}
+			if (nextDY != (y >= p[2].y ? 1 : -1)) {
+				if (total > 0)
+					--total;
+				else {
+					if (fabs(p[2].y-y) < fabs(p[0].y-y))
+						x[total] = p[2].x;
+					dy[total++] = nextDY;
+				}
+			}
+			return total;
+		}
+		case CUBIC:  {
+			int total = 0;
+			int nextDY = y > p[0].y ? 1 : -1;
+			x[total] = p[0].x;
+			if (p[0].y == y) {
+				if (p[0].y < p[1].y || (p[0].y == p[1].y && (p[0].y < p[2].y || (p[0].y == p[2].y && p[0].y < p[3].y))))
+					dy[total++] = 1;
+				else
+					nextDY = 1;
+			}
+			{
+				glm::fvec2 ab = p[1]-p[0];
+				glm::fvec2 br = p[2]-p[1]-ab;
+				glm::fvec2 as = (p[3]-p[2])-(p[2]-p[1])-br;
+				double t[3];
+				int solutions = solveCubic(t, as.y, 3*br.y, 3*ab.y, p[0].y-y);
+				// Sort solutions
+				double tmp;
+				if (solutions >= 2) {
+					if (t[0] > t[1])
+						tmp = t[0], t[0] = t[1], t[1] = tmp;
+					if (solutions >= 3 && t[1] > t[2]) {
+						tmp = t[1], t[1] = t[2], t[2] = tmp;
+						if (t[0] > t[1])
+							tmp = t[0], t[0] = t[1], t[1] = tmp;
+					}
+				}
+				for (int i = 0; i < solutions && total < 3; ++i) {
+					if (t[i] >= 0 && t[i] <= 1) {
+						x[total] = p[0].x+3*t[i]*ab.x+3*t[i]*t[i]*br.x+t[i]*t[i]*t[i]*as.x;
+						if (nextDY*(ab.y+2*t[i]*br.y+t[i]*t[i]*as.y) >= 0) {
+							dy[total++] = nextDY;
+							nextDY = -nextDY;
+						}
+					}
+				}
+			}
+			if (p[3].y == y) {
+				if (nextDY > 0 && total > 0) {
+					--total;
+					nextDY = -1;
+				}
+				if ((p[3].y < p[2].y || (p[3].y == p[2].y && (p[3].y < p[1].y || (p[3].y == p[1].y && p[3].y < p[0].y)))) && total < 3) {
+					x[total] = p[3].x;
+					if (nextDY < 0) {
+						dy[total++] = -1;
+						nextDY = 1;
+					}
+				}
+			}
+			if (nextDY != (y >= p[3].y ? 1 : -1)) {
+				if (total > 0)
+					--total;
+				else {
+					if (fabs(p[3].y-y) < fabs(p[0].y-y))
+						x[total] = p[3].x;
+					dy[total++] = nextDY;
+				}
+			}
+			return total;
+		}
+		default: return 0;
 	}
 }
 
