@@ -351,9 +351,20 @@ void main(void) {
     minDistance.b = clamp(minDistance.b, -realMaxDistance, realMaxDistance);
     minDistance.a = abs(clamp(minDistance.a, -realMaxDistance, realMaxDistance));
 
-    /* FOR DEBUG! */
-    //minDistance.rgb = winding.a <= 0 ? (unpackRGB(edges[closestEdgeIds.a].clr) * -1.0) : unpackRGB(edges[closestEdgeIds.a].clr);
-    //minDistance.rgb = winding.a <= 0 ? (minDistance.rgb * -1.0) : minDistance.rgb;
+    // Last ditch effort to fix the holes
+    vec3 clr = unpackRGB(edges[closestEdgeIds.a].clr);
+    float windingSign = winding.a <= 0 ? -1.0 : 1.0;
+    vec4 signs = sign(minDistance);
+    if (clr.r >= 0.003921568627451) {
+        minDistance.r = abs(minDistance.r) * windingSign;
+    }
+    if (clr.g >= 0.003921568627451) {
+        minDistance.g = abs(minDistance.g) * windingSign;
+    }
+    if (clr.b >= 0.003921568627451) {
+        minDistance.b = abs(minDistance.b) * windingSign;
+    }
+
 
     if(winding.a == 0) minDistance.a = minDistance.a * -1.0;
     imageStore(rawSdfTexture, threadId, minDistance);
