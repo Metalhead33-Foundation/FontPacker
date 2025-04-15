@@ -31,16 +31,19 @@ enum CubicPart {
 };
 
 enum Orientation {
-	CW,      // Clockwise
-	CCW,     // Counterclockwise
-	COLINEAR // Colinear
+	CW = 0,      // Clockwise
+	CCW = 1,     // Counterclockwise
+	COLINEAR = 2 // Colinear
 };
 Orientation checkOrientation(const glm::fvec2& A, const glm::fvec2& B);
+Orientation checkOrientation(const glm::fvec2& A, const glm::fvec2& B, const glm::fvec2& C);
+Orientation checkQuadraticOrientation(const glm::fvec2& p1, const glm::fvec2& control, const glm::fvec2& p2);
+Orientation checkCubicOrientation(const glm::fvec2& p1, const glm::fvec2& c1,const glm::fvec2& c2, const glm::fvec2& p2);
 
 struct EdgeSegment {
 	EdgeType type;
-	int32_t shapeId;
-	uint32_t clr;
+	int32_t contourId;
+	uint32_t clr; // RRGGBBXX encoded edge colour.
 	int32_t padding; // For easier storage in OpenGL SSBOs. std430
 	std::array<glm::fvec2,4> points;
 	float getMinX() const;
@@ -48,7 +51,11 @@ struct EdgeSegment {
 	float getMaxX() const;
 	float getMaxY() const;
 	void invert();
+	glm::fvec2 direction(float param=0.0f) const;
+	glm::fvec2 directionChange(float param=0.0f) const;
+	void splitIntoThree(EdgeSegment& a, EdgeSegment& b, EdgeSegment& c) const;
 	Orientation checkOrientation() const;
+	void deconverge(int param, const glm::fvec2& vector);
 };
 
 struct FontOutlineDecompositionContext {
@@ -57,6 +64,7 @@ struct FontOutlineDecompositionContext {
 	glm::fvec2 curPos = glm::fvec2(0.0f, 0.0f);
 	glm::fvec2 firstPointInContour = glm::fvec2(0.0f, 0.0f);
 	std::vector<EdgeSegment> edges;
+	std::vector<EdgeSegment> stagingEdges;
 	int32_t curShapeId = 0;
 	void closeShape();
 	int moveTo(const glm::fvec2& to);
@@ -68,6 +76,7 @@ struct FontOutlineDecompositionContext {
 	bool isWithinBoundingBox(unsigned xOffset, unsigned yOffset, unsigned width, unsigned height);
 	void iterateOverContours(const IdShapeMapIterator& shapeIterator) const;
 	static float computeSignedArea(const std::span<const EdgeSegment>& contourEdges, int subdivisions = 20);
+	static void normalizeContour(std::vector<EdgeSegment>& contour);
 	void makeShapeIdsSigend(bool flip = false);
 	void assignColours();
 	void clear();
