@@ -32,6 +32,7 @@ struct SDFGenerationArguments {
 	QString font_path;
 	uint32_t char_min;
 	uint32_t char_max;
+	bool msdfgenColouring;
 	bool invert;
 	bool jpeg;
 	bool forceRaster;

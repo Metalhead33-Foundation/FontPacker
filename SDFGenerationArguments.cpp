@@ -18,6 +18,7 @@ extern const QString MAXIMIZE_INSTEAD_OF_AVERAGE_KEY;
 
 void SDFGenerationArguments::fromArgs(const QVariantMap& args)
 {
+	this->msdfgenColouring = args.contains(MSDFGEN_COLOURING);
 	this->invert = args.contains(INVERT_KEY);
 	this->jpeg = args.contains(JPEG_KEY);
 	this->forceRaster = args.contains(FORCE_RASTER_KEY);

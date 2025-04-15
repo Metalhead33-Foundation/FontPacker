@@ -219,7 +219,8 @@ void SdfGenerationContext::processOutlineGlyph(StoredCharacter& output, FT_Glyph
 	decompositionContext.makeShapeIdsSigend( orientation != FT_ORIENTATION_TRUETYPE);
 	decompositionContext.orientContours();
 	decompositionContext.translateToNewSize(args.internalProcessSize,args.internalProcessSize,args.padding,args.padding, output.metricWidth, output.metricHeight, output.horiBearingX, output.horiBearingY);
-	decompositionContext.assignColoursMsdfgen();
+	if(args.msdfgenColouring) decompositionContext.assignColoursMsdfgen();
+	else decompositionContext.assignColours();
 
 	QBuffer buff(&output.sdf);
 	QImage img = produceOutlineSdf(decompositionContext, args);

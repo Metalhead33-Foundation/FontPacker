@@ -58,5 +58,6 @@ extern const QString GAMMA_CORRECT_KEY;
 extern const QString MIDPOINT_ADJUSTMENT_KEY;
 extern const QString MAXIMIZE_INSTEAD_OF_AVERAGE_KEY;
 extern const QString INVERT_KEY;
+extern const QString MSDFGEN_COLOURING;
 
 #endif // CONSTSTRINGS_HPP
