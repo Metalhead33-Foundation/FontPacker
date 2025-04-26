@@ -5,6 +5,7 @@
 #include "PreprocessedFontFace.hpp"
 #include <memory>
 #include <vector>
+#include "CQTOpenGLLuaSyntaxHighlighter.hpp"
 
 namespace Ui {
 class MainWindow;
@@ -77,6 +78,7 @@ private:
 	void loadCborFont(const QString& filepath);
 	void loadBinFont(const QString& filepath);
 	QColor clr;
+	argos::CQTOpenGLLuaSyntaxHighlighter* highlighter;
 };
 
 #endif // MAINWINDOW_HPP

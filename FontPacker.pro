@@ -1,4 +1,4 @@
-QT += core gui opengl widgets openglwidgets
+QT += core gui opengl widgets openglwidgets core5compat
 
 CONFIG += c++2a cmdline
 
@@ -14,6 +14,7 @@ LIBS += -lfreetype -lharfbuzz -fopenmp
 DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+        CQTOpenGLLuaSyntaxHighlighter.cpp \
         ConstStrings.cpp \
         FontOutlineDecompositionContext.cpp \
         GlHelpers.cpp \
@@ -45,6 +46,7 @@ DISTFILES += \
     shader_msdf1.glsl
 
 HEADERS += \
+    CQTOpenGLLuaSyntaxHighlighter.hpp \
     ConstStrings.hpp \
     FontOutlineDecompositionContext.hpp \
     GlHelpers.hpp \

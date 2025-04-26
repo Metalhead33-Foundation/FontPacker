@@ -11,6 +11,7 @@ MainWindow::MainWindow(QWidget *parent)
 	connect(this,&MainWindow::changeState,this,&MainWindow::onStateChange);
 	connect(this,&MainWindow::fontHasBeenLoaded,this,&MainWindow::onFontHasBeenLoaded);
 	ui->setupUi(this);
+	highlighter = new argos::CQTOpenGLLuaSyntaxHighlighter(ui->glslEditor->document(), false);
 	emit changeState(MainWindowState::INITIAL);
 }
 
