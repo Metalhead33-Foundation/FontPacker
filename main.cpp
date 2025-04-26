@@ -12,6 +12,7 @@ QVariantMap parseArguments(int argc, char *argv[]);
 int main(int argc, char *argv[])
 {
 	QApplication a(argc, argv);
+	setlocale(LC_ALL, "C");
 	auto args = parseArguments(argc,argv);
 	if(args.contains(QStringLiteral("nogui"))) {
 		QTextStream strm(stdout);
