@@ -1,4 +1,5 @@
 #include "FontOutlineDecompositionContext.hpp"
+#include <algorithm>
 #include <climits>
 #include <cstring>
 #include <span>

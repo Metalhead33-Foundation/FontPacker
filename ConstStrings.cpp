@@ -29,6 +29,7 @@ const QString CHAR_MAX_KEY = QStringLiteral("mincharcode");
 const QString IN_FONT_KEY = QStringLiteral("infont");
 const QString IN_BIN_KEY = QStringLiteral("inbin");
 const QString IN_CBOR_KEY = QStringLiteral("incbor");
+const QString IN_SVG_KEY = QStringLiteral("insvg");
 const QString OUT_FONT_KEY = QStringLiteral("outfont");
 const QString OUT_BIN_KEY = QStringLiteral("outbin");
 const QString OUT_CBOR_KEY = QStringLiteral("outcbor");

@@ -31,6 +31,7 @@ extern const QString CHAR_MAX_KEY;
 extern const QString IN_FONT_KEY;
 extern const QString IN_BIN_KEY;
 extern const QString IN_CBOR_KEY;
+extern const QString IN_SVG_KEY;
 extern const QString OUT_FONT_KEY;
 extern const QString OUT_BIN_KEY;
 extern const QString OUT_CBOR_KEY;

@@ -32,6 +32,21 @@ int main(int argc, char *argv[])
 			}
 			ctx->processFont(fontface,sdfArgs);
 		}
+		if( args.contains( IN_SVG_KEY ) ) {
+			SDFGenerationArguments sdfArgs;
+			sdfArgs.fromArgs(args);
+			std::unique_ptr<SdfGenerationContext> ctx;
+			switch (sdfArgs.mode) {
+				case SOFTWARE: ctx = std::make_unique<SdfGenerationContextSoft>(); break;
+				case OPENGL_COMPUTE: ctx = std::make_unique<SdfGenerationGL>(sdfArgs); break;
+				case OPENCL: throw std::runtime_error("Unsupported mode!");
+					break;
+			}
+			QFile svgFile(args[IN_SVG_KEY].toString());
+			if( svgFile.open(QFile::ReadOnly) ) {
+				ctx->processSvg(fontface, svgFile.readAll(), sdfArgs);
+			}
+		}
 		else if( args.contains( IN_BIN_KEY ) ) {
 			QFile fil(args.value(IN_BIN_KEY).toString());
 			if(fil.open(QFile::ReadOnly)) {

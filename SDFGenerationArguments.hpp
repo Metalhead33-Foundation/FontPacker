@@ -20,8 +20,14 @@ enum DistanceType {
 	Euclidean
 };
 
+enum SvgTreatment {
+	SeparateShapes,
+	ShapesAllInOne
+};
+
 struct SDFGenerationArguments {
 	SDfGenerationMode mode = SOFTWARE;
+	SvgTreatment svgTreatment = SeparateShapes;
 	SDFType type = SDF;
 	DistanceType distType = Manhattan;
 	uint32_t internalProcessSize;
