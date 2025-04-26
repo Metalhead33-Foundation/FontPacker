@@ -10,9 +10,6 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include <freetype/ftoutln.h>
-extern "C" {
-#include <svgtiny.h>
-}
 
 struct FT_Bitmap_;
 struct svgtiny_shape;

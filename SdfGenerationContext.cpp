@@ -5,6 +5,9 @@
 #include <cstdint>
 #include <QBuffer>
 #include <QBitArray>
+extern "C" {
+#include <svgtiny.h>
+}
 
 /*
 	static int Outline_MoveToFunc(const FT_Vector* to, void* user);
@@ -427,14 +430,14 @@ void SdfGenerationContext::processFont(PreprocessedFontFace& output, const SDFGe
 void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteArray& buff, const SDFGenerationArguments& args)
 {
 	std::unique_ptr<svgtiny_diagram,decltype(&svgtiny_free)> diagram(svgtiny_create(),svgtiny_free);
-	svgtiny_code code;
-	code = svgtiny_parse(diagram.get(), buff.data(), buff.size(), "file:///tmp/HelloDarknessMyOldFriend.svg", args.internalProcessSize, args.internalProcessSize);
+	svgtiny_code code = svgtiny_parse(diagram.get(), buff.data(), buff.size(), "file:///tmp/HelloDarknessMyOldFriend.svg", args.internalProcessSize, args.internalProcessSize);
 	switch(code) {
 		case svgtiny_OK: break;
 		case svgtiny_OUT_OF_MEMORY: throw std::runtime_error("Out of memory!");
 		case svgtiny_LIBDOM_ERROR: throw std::runtime_error("LibBom error!");
 		case svgtiny_NOT_SVG: throw std::runtime_error("This is not an SVG!");
 		case svgtiny_SVG_ERROR: throw std::runtime_error("SVG error!");
+		default: throw std::runtime_error("Unknown error!");
 			break;
 	}
 	output.type = args.type;

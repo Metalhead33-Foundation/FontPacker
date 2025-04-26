@@ -33,6 +33,7 @@ int main(int argc, char *argv[])
 			ctx->processFont(fontface,sdfArgs);
 		}
 		if( args.contains( IN_SVG_KEY ) ) {
+			auto svgpath = args[IN_SVG_KEY].toString();
 			SDFGenerationArguments sdfArgs;
 			sdfArgs.fromArgs(args);
 			std::unique_ptr<SdfGenerationContext> ctx;
@@ -42,7 +43,7 @@ int main(int argc, char *argv[])
 				case OPENCL: throw std::runtime_error("Unsupported mode!");
 					break;
 			}
-			QFile svgFile(args[IN_SVG_KEY].toString());
+			QFile svgFile(svgpath);
 			if( svgFile.open(QFile::ReadOnly) ) {
 				ctx->processSvg(fontface, svgFile.readAll(), sdfArgs);
 			}
