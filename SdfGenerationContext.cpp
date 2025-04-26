@@ -240,6 +240,7 @@ void SdfGenerationContext::processOutlineGlyph(StoredCharacter& output, FT_Glyph
 			}
 			if(img.width() != args.intendedSize) img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
 	}
+	if( args.type == SDFType::MSDF ) img = img.convertToFormat( QImage::Format_RGB888 );
 	buff.open(QIODevice::WriteOnly);
 	if(!img.save(&buff, args.jpeg ? "JPG" : "PNG",-1)) throw std::runtime_error("Failed to save image!");
 	buff.close();

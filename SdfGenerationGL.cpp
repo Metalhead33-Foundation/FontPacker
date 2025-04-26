@@ -147,7 +147,6 @@ void SdfGenerationGL::fetchMSDFFromGPU(QImage& newimg, const SDFGenerationArgume
 			t += 0.5f;
 			if(args.invert) t = 1.0f - t;
 		}
-		it.a = 1.0f;
 	}
 	if(args.midpointAdjustment.has_value()) {
 		float toDivideWith = args.midpointAdjustment.value_or(1.0f);
@@ -166,6 +165,11 @@ void SdfGenerationGL::fetchMSDFFromGPU(QImage& newimg, const SDFGenerationArgume
 			it.y = gammaAdjust(it.y);
 			it.z = gammaAdjust(it.z);
 			it.w = gammaAdjust(it.w);
+		}
+	}
+	if( args.type != SDFType::MSDFA ) {
+		for(size_t i = 0; i < rawDistances.size(); ++i) {
+			rawDistances[i].a = 1.0f;
 		}
 	}
 	for(int y = 0; y < newimg.height(); ++y) {

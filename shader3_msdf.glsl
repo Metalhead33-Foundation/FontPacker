@@ -365,7 +365,6 @@ void main(void) {
         minDistance.b = abs(minDistance.b) * windingSign;
     }
 
-
     if(winding.a == 0) minDistance.a = minDistance.a * -1.0;
     imageStore(rawSdfTexture, threadId, minDistance);
     imageStore(isInsideTex, threadId, vec4(
