@@ -88,8 +88,8 @@ struct FontOutlineDecompositionContext {
 	int lineTo(const glm::fvec2& to);
 	int conicTo(const glm::fvec2& control, const glm::fvec2&  to);
 	int cubicTo(const glm::fvec2& control1, const glm::fvec2& control2, const glm::fvec2& to);
-	void translateToNewSize(unsigned nWidth, unsigned nHeight, unsigned paddingX, unsigned paddingY);
-	void translateToNewSize(unsigned nWidth, unsigned nHeight, unsigned paddingX, unsigned paddingY, double metricWidth, double metricHeight, double horiBearingX, double horiBearingY);
+	void translateToNewSize(unsigned nWidth, unsigned nHeight, unsigned paddingX, unsigned paddingY, bool invertY = true);
+	void translateToNewSize(unsigned nWidth, unsigned nHeight, unsigned paddingX, unsigned paddingY, double metricWidth, double metricHeight, double horiBearingX, double horiBearingY, bool invertY = true);
 	bool isWithinBoundingBox(unsigned xOffset, unsigned yOffset, unsigned width, unsigned height);
 	void iterateOverContours(const IdShapeMapIterator& shapeIterator) const;
 	static float computeSignedArea(const std::span<const EdgeSegment>& contourEdges, int subdivisions = 20);

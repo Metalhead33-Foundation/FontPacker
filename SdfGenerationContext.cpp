@@ -221,12 +221,12 @@ void SdfGenerationContext::processOutlineGlyph(StoredCharacter& output, FT_Glyph
 	decompositionContext.closeShape();
 	decompositionContext.makeShapeIdsSigend( orientation != FT_ORIENTATION_TRUETYPE);
 	decompositionContext.orientContours();
-	decompositionContext.translateToNewSize(args.internalProcessSize,args.internalProcessSize,args.padding,args.padding, output.metricWidth, output.metricHeight, output.horiBearingX, output.horiBearingY);
 	processOutlineGlyphEnd(output, args);
 }
 
-void SdfGenerationContext::processOutlineGlyphEnd(StoredCharacter& output, const SDFGenerationArguments& args)
+void SdfGenerationContext::processOutlineGlyphEnd(StoredCharacter& output, const SDFGenerationArguments& args, bool flipY)
 {
+	decompositionContext.translateToNewSize(args.internalProcessSize,args.internalProcessSize,args.padding,args.padding, output.metricWidth, output.metricHeight, output.horiBearingX, output.horiBearingY, flipY);
 	if(args.msdfgenColouring) decompositionContext.assignColoursMsdfgen();
 	else decompositionContext.assignColours();
 
@@ -430,7 +430,7 @@ void SdfGenerationContext::processFont(PreprocessedFontFace& output, const SDFGe
 void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteArray& buff, const SDFGenerationArguments& args)
 {
 	std::unique_ptr<svgtiny_diagram,decltype(&svgtiny_free)> diagram(svgtiny_create(),svgtiny_free);
-	svgtiny_code code = svgtiny_parse(diagram.get(), buff.data(), buff.size(), "file:///tmp/HelloDarknessMyOldFriend.svg", args.internalProcessSize, args.internalProcessSize);
+	svgtiny_code code = svgtiny_parse(diagram.get(), buff.data(), buff.size(), "file:///tmp/HelloDarknessMyOldFriend.svg", -1, -1);
 	switch(code) {
 		case svgtiny_OK: break;
 		case svgtiny_OUT_OF_MEMORY: throw std::runtime_error("Out of memory!");
@@ -452,6 +452,20 @@ void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteA
 		case SeparateShapes: {
 			for (unsigned int i = 0; i != diagram->shape_count; i++) {
 				StoredCharacter storedChar;
+				storedChar.width = diagram->width;
+				storedChar.height = diagram->height;
+				storedChar.bearing_x = 0;
+				storedChar.bearing_y = 0;
+				storedChar.advance_x = diagram->width;
+				storedChar.advance_y = diagram->height;
+				storedChar.metricWidth = storedChar.width;
+				storedChar.metricHeight = storedChar.height;
+				storedChar.horiBearingX = 0;
+				storedChar.horiBearingY = storedChar.height;
+				storedChar.horiAdvance = diagram->width;
+				storedChar.vertBearingX = diagram->width;
+				storedChar.vertBearingY = 0;
+				storedChar.vertAdvance = diagram->height;
 				processSvgShape(storedChar, diagram->shape[i], args);
 				output.storedCharacters.insert(i, storedChar);
 			}
@@ -459,6 +473,20 @@ void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteA
 		}
 		case ShapesAllInOne: {
 			StoredCharacter storedChar;
+			storedChar.width = diagram->width;
+			storedChar.height = diagram->height;
+			storedChar.bearing_x = 0;
+			storedChar.bearing_y = 0;
+			storedChar.advance_x = diagram->width;
+			storedChar.advance_y = diagram->height;
+			storedChar.metricWidth = storedChar.width;
+			storedChar.metricHeight = storedChar.height;
+			storedChar.horiBearingX = 0;
+			storedChar.horiBearingY = storedChar.height;
+			storedChar.horiAdvance = diagram->width;
+			storedChar.vertBearingX = diagram->width;
+			storedChar.vertBearingY = 0;
+			storedChar.vertAdvance = diagram->height;
 			processSvgShapes(storedChar, std::span<const svgtiny_shape>(diagram->shape, diagram->shape_count), args);
 			output.storedCharacters.insert(0, storedChar);
 			break;
@@ -474,8 +502,8 @@ void SdfGenerationContext::processSvgShape(StoredCharacter& output, const svgtin
 	output.valid = true;
 	decompositionContext.clear();
 	decomposeSvgShape(decompositionContext, shape);
-	decompositionContext.orientContours();
-	processOutlineGlyphEnd(output,args);
+	//decompositionContext.orientContours();
+	processOutlineGlyphEnd(output,args,false);
 }
 
 void SdfGenerationContext::processSvgShapes(StoredCharacter& output, const std::span<const svgtiny_shape>& shapes, const SDFGenerationArguments& args)
@@ -490,8 +518,8 @@ void SdfGenerationContext::processSvgShapes(StoredCharacter& output, const std::
 	for(const auto& it : shapes) {
 		if(it.path) decomposeSvgShape(decompositionContext, it);
 	}
-	decompositionContext.orientContours();
-	processOutlineGlyphEnd(output,args);
+	//decompositionContext.orientContours();
+	processOutlineGlyphEnd(output,args,false);
 }
 
 void SdfGenerationContext::decomposeSvgShape(FontOutlineDecompositionContext& decompositionContext, const svgtiny_shape& shape)

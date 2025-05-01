@@ -27,7 +27,7 @@ enum SvgTreatment {
 
 struct SDFGenerationArguments {
 	SDfGenerationMode mode = SOFTWARE;
-	SvgTreatment svgTreatment = SeparateShapes;
+	SvgTreatment svgTreatment = ShapesAllInOne;
 	SDFType type = SDF;
 	DistanceType distType = Manhattan;
 	uint32_t internalProcessSize;

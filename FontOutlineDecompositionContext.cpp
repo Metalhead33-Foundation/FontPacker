@@ -830,7 +830,7 @@ int FontOutlineDecompositionContext::cubicTo(const glm::fvec2& control1, const g
 	return 0;
 }
 
-void FontOutlineDecompositionContext::translateToNewSize(unsigned int nWidth, unsigned int nHeight, unsigned int paddingX, unsigned int paddingY)
+void FontOutlineDecompositionContext::translateToNewSize(unsigned int nWidth, unsigned int nHeight, unsigned int paddingX, unsigned int paddingY, bool invertY)
 {
 	const unsigned widthWithoutPadding = nWidth - (2 * paddingX);
 	const unsigned heightWithoutPadding = nHeight - (2 * paddingY);
@@ -872,9 +872,11 @@ void FontOutlineDecompositionContext::translateToNewSize(unsigned int nWidth, un
 		}
 	}
 	// Flip Y
-	for(auto& it : edges) {
-		for(auto& jt : it.points) {
-			jt.y = static_cast<float>(nHeight) - jt.y;
+	if(invertY) {
+		for(auto& it : edges) {
+			for(auto& jt : it.points) {
+				jt.y = static_cast<float>(nHeight) - jt.y;
+			}
 		}
 	}
 }
@@ -882,7 +884,7 @@ void FontOutlineDecompositionContext::translateToNewSize(unsigned int nWidth, un
 void FontOutlineDecompositionContext::translateToNewSize(unsigned int nWidth, unsigned int nHeight,
 														 unsigned int paddingX, unsigned int paddingY,
 														 double metricWidth, double metricHeight,
-														 double horiBearingX, double horiBearingY)
+														 double horiBearingX, double horiBearingY, bool invertY)
 {
 	const unsigned widthWithoutPadding = nWidth - (2 * paddingX);
 	const unsigned heightWithoutPadding = nHeight - (2 * paddingY);
@@ -907,9 +909,11 @@ void FontOutlineDecompositionContext::translateToNewSize(unsigned int nWidth, un
 	}
 
 	// Flip Y-axis to match OpenGL's coordinate system
-	for (auto& it : edges) {
-		for (auto& jt : it.points) {
-			jt.y = static_cast<float>(nHeight) - jt.y;
+	if(invertY) {
+		for (auto& it : edges) {
+			for (auto& jt : it.points) {
+				jt.y = static_cast<float>(nHeight) - jt.y;
+			}
 		}
 	}
 }

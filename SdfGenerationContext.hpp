@@ -16,7 +16,7 @@ struct svgtiny_shape;
 class SdfGenerationContext
 {
 private:
-	void processOutlineGlyphEnd(StoredCharacter& output, const SDFGenerationArguments& args);
+	void processOutlineGlyphEnd(StoredCharacter& output, const SDFGenerationArguments& args, bool flipY = true);
 protected:
 	FT_Library library;
 	FontOutlineDecompositionContext decompositionContext;
