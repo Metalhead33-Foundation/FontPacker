@@ -450,6 +450,7 @@ void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteA
 	output.fontFamilyName = QStringLiteral("SVG");
 	switch (args.svgTreatment) {
 		case SeparateShapes: {
+			bool isFirstShape = true;
 			for (unsigned int i = 0; i != diagram->shape_count; i++) {
 				StoredCharacter storedChar;
 				storedChar.width = diagram->width;
@@ -466,7 +467,7 @@ void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteA
 				storedChar.vertBearingX = diagram->width;
 				storedChar.vertBearingY = 0;
 				storedChar.vertAdvance = diagram->height;
-				processSvgShape(storedChar, diagram->shape[i], args);
+				processSvgShape(storedChar, diagram->shape[i], args, isFirstShape);
 				output.storedCharacters.insert(i, storedChar);
 			}
 			break;
@@ -496,12 +497,12 @@ void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteA
 
 }
 
-void SdfGenerationContext::processSvgShape(StoredCharacter& output, const svgtiny_shape& shape, const SDFGenerationArguments& args)
+void SdfGenerationContext::processSvgShape(StoredCharacter& output, const svgtiny_shape& shape, const SDFGenerationArguments& args, bool isFirstShape)
 {
 	if(!shape.path) return;
 	output.valid = true;
 	decompositionContext.clear();
-	decomposeSvgShape(decompositionContext, shape);
+	decomposeSvgShape(decompositionContext, shape, isFirstShape);
 	//decompositionContext.orientContours();
 	processOutlineGlyphEnd(output,args,false);
 }
@@ -515,25 +516,32 @@ void SdfGenerationContext::processSvgShapes(StoredCharacter& output, const std::
 	output.valid = isValid;
 	if(!isValid) return;
 	decompositionContext.clear();
+	bool isFirstShape = true;
 	for(const auto& it : shapes) {
-		if(it.path) decomposeSvgShape(decompositionContext, it);
+		if(it.path) decomposeSvgShape(decompositionContext, it, isFirstShape);
+		isFirstShape = false;
 	}
 	//decompositionContext.orientContours();
 	processOutlineGlyphEnd(output,args,false);
 }
 
-void SdfGenerationContext::decomposeSvgShape(FontOutlineDecompositionContext& decompositionContext, const svgtiny_shape& shape)
+void SdfGenerationContext::decomposeSvgShape(FontOutlineDecompositionContext& decompositionContext, const svgtiny_shape& shape, bool isFirstShape)
 {
 	if(!shape.path) return;
+	bool isFirstSubcontour = isFirstShape;
 	for (unsigned int i = 0; i < shape.path_length; ) {
 		switch ( static_cast<int>(shape.path[i]) ) {
 			case svgtiny_PATH_MOVE:
-				decompositionContext.moveTo(glm::fvec2(shape.path[i + 1],shape.path[i + 2]));
+				//decompositionContext.moveTo(glm::fvec2(shape.path[i + 1],shape.path[i + 2]), true, isFirstSubcontour ? ReverseIf::LESSER : ReverseIf::GREATER );
+				decompositionContext.moveTo(glm::fvec2(shape.path[i + 1],shape.path[i + 2]), true, isFirstSubcontour ? ReverseIf::GREATER : ReverseIf::LESSER );
 				i += 3;
+				isFirstSubcontour = false;
 				break;
 			case svgtiny_PATH_CLOSE:
-				decompositionContext.closeShape();
+				//decompositionContext.closeShape(true, isFirstSubcontour ? ReverseIf::LESSER : ReverseIf::GREATER);
+				decompositionContext.closeShape(true, isFirstSubcontour ? ReverseIf::GREATER : ReverseIf::LESSER);
 				i += 1;
+				isFirstSubcontour = false;
 				break;
 			case svgtiny_PATH_LINE:
 				decompositionContext.lineTo( glm::fvec2(shape.path[i + 1],shape.path[i + 2]) );

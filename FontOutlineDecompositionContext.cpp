@@ -388,20 +388,44 @@ template<typename T, size_t N> void zeroOut(std::array<T,N>& data) {
 	zeroOut(std::span<T>(data.data(),N));
 }
 
-void FontOutlineDecompositionContext::closeShape()
+void FontOutlineDecompositionContext::closeShape(bool checkWinding, ReverseIf reversIf)
 {
 	if (curPos != firstPointInContour)
 		lineTo(firstPointInContour); // Close the contour
 	if(stagingEdges.size()) {
 		normalizeContour(stagingEdges);
+		if(checkWinding) {
+			auto computedArea = computeSignedArea(stagingEdges);
+			switch (reversIf) {
+				case ReverseIf::GREATER: {
+					if (computedArea >= 0.0f) {
+						for(auto& it : stagingEdges) {
+							it.invert();
+						}
+						std::reverse(stagingEdges.begin(),stagingEdges.end());
+					}
+					break;
+				}
+				case ReverseIf::LESSER: {
+					if (computedArea <= 0.0f) {
+						for(auto& it : stagingEdges) {
+							it.invert();
+						}
+						std::reverse(stagingEdges.begin(),stagingEdges.end());
+					}
+					break;
+				}
+				default: break;
+			}
+		}
 		edges.insert(edges.end(),stagingEdges.begin(), stagingEdges.end());
 		stagingEdges.clear();
 	}
 }
 
-int FontOutlineDecompositionContext::moveTo(const glm::fvec2& to)
+int FontOutlineDecompositionContext::moveTo(const glm::fvec2& to, bool checkWinding, ReverseIf reversIf)
 {
-	closeShape();
+	closeShape(checkWinding);
 	curPos = to;
 	firstPointInContour = to;
 	++curShapeId;

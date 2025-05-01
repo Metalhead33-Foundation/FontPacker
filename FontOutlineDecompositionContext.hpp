@@ -42,6 +42,11 @@ enum class EdgeColor : uint32_t {
 	WHITE = 0xFFFFFF
 };
 
+enum class ReverseIf : uint8_t {
+	GREATER,
+	LESSER
+};
+
 enum class Orientation {
 	CW = 0,      // Clockwise
 	CCW = 1,     // Counterclockwise
@@ -83,8 +88,8 @@ struct FontOutlineDecompositionContext {
 	std::vector<EdgeSegment> edges;
 	std::vector<EdgeSegment> stagingEdges;
 	int32_t curShapeId = 0;
-	void closeShape();
-	int moveTo(const glm::fvec2& to);
+	void closeShape(bool checkWinding=false, ReverseIf reversIf = ReverseIf::GREATER);
+	int moveTo(const glm::fvec2& to, bool checkWinding=false, ReverseIf reversIf = ReverseIf::GREATER );
 	int lineTo(const glm::fvec2& to);
 	int conicTo(const glm::fvec2& control, const glm::fvec2&  to);
 	int cubicTo(const glm::fvec2& control1, const glm::fvec2& control2, const glm::fvec2& to);
