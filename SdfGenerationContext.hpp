@@ -12,7 +12,7 @@
 #include <freetype/ftoutln.h>
 
 struct FT_Bitmap_;
-struct svgtiny_shape;
+struct NSVGshape;
 class SdfGenerationContext
 {
 private:
@@ -30,9 +30,9 @@ public:
 	void processOutlineGlyph(StoredCharacter& output, FT_GlyphSlot glyphSlot, const SDFGenerationArguments& args);
 	void processBitmapGlyph(StoredCharacter& output, FT_GlyphSlot glyphSlot, const SDFGenerationArguments& args);
 	void processFont(PreprocessedFontFace& output, const SDFGenerationArguments& args);
-	void processSvg(PreprocessedFontFace& output, const QByteArray& buff, const SDFGenerationArguments& args);
-	void processSvgShape(StoredCharacter& output, const svgtiny_shape& shape, const SDFGenerationArguments& args, bool isFirstShape = false);
-	void processSvgShapes(StoredCharacter& output, const std::span<const svgtiny_shape>& shapes, const SDFGenerationArguments& args);
+	void processSvg(PreprocessedFontFace& output, QByteArray& buff, const SDFGenerationArguments& args);
+	void processSvgShape(StoredCharacter& output, const NSVGshape& shape, const SDFGenerationArguments& args);
+	void processSvgShapes(StoredCharacter& output, const NSVGshape* shapes, const SDFGenerationArguments& args);
 	static QImage FTBitmap2QImage(const FT_Bitmap_& bitmap, unsigned int intended_width, unsigned int intended_height);
 	static QBitArray producePaddedVariant1bit(const QImage& glyph, unsigned int padding);
 	static QImage producePaddedVariantOfImage(const QImage& glyph, unsigned int padding);
@@ -43,7 +43,7 @@ public:
 	static int Outline_LineToFunc(const FT_Vector* to, void* user );
 	static int Outline_ConicToFunc(const FT_Vector* control, const FT_Vector*  to, void* user);
 	static int Outline_CubicToFunc(const FT_Vector* control1, const FT_Vector* control2, const FT_Vector* to, void* user);
-	static void decomposeSvgShape(FontOutlineDecompositionContext& decompositionContext, const svgtiny_shape& shape, bool isFirstShape = false);
+	static void decomposeSvgShape(FontOutlineDecompositionContext& decompositionContext, const NSVGshape& shape);
 };
 
 #endif // SDFGENERATIONCONTEXT_HPP

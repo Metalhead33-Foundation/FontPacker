@@ -6,7 +6,8 @@
 #include <QBuffer>
 #include <QBitArray>
 extern "C" {
-#include <svgtiny.h>
+#define NANOSVG_IMPLEMENTATION	// Expands implementation
+#include <nanosvg/nanosvg.h>
 }
 
 /*
@@ -427,11 +428,10 @@ void SdfGenerationContext::processFont(PreprocessedFontFace& output, const SDFGe
 	FT_Done_Face(face);
 }
 
-void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteArray& buff, const SDFGenerationArguments& args)
+void SdfGenerationContext::processSvg(PreprocessedFontFace& output, QByteArray& buff, const SDFGenerationArguments& args)
 {
-	std::unique_ptr<svgtiny_diagram,decltype(&svgtiny_free)> diagram(svgtiny_create(),svgtiny_free);
-	svgtiny_code code = svgtiny_parse(diagram.get(), buff.data(), buff.size(), "file:///tmp/HelloDarknessMyOldFriend.svg", -1, -1);
-	switch(code) {
+	std::unique_ptr<NSVGimage,decltype(&nsvgDelete)> diagram(nsvgParse(buff.data(), "px", args.internalProcessSize ) ,nsvgDelete);
+	/*switch(code) {
 		case svgtiny_OK: break;
 		case svgtiny_OUT_OF_MEMORY: throw std::runtime_error("Out of memory!");
 		case svgtiny_LIBDOM_ERROR: throw std::runtime_error("LibBom error!");
@@ -439,7 +439,7 @@ void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteA
 		case svgtiny_SVG_ERROR: throw std::runtime_error("SVG error!");
 		default: throw std::runtime_error("Unknown error!");
 			break;
-	}
+	}*/
 	output.type = args.type;
 	output.distType = args.distType;
 	output.bitmap_size = args.intendedSize;
@@ -448,10 +448,11 @@ void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteA
 	output.jpeg = args.jpeg;
 	output.hasVert = false;
 	output.fontFamilyName = QStringLiteral("SVG");
+	decompositionContext.curShapeId = 0;
 	switch (args.svgTreatment) {
 		case SeparateShapes: {
-			bool isFirstShape = true;
-			for (unsigned int i = 0; i != diagram->shape_count; i++) {
+			unsigned int i = 0;
+			for (auto shape = diagram->shapes; shape; shape = shape->next) {
 				StoredCharacter storedChar;
 				storedChar.width = diagram->width;
 				storedChar.height = diagram->height;
@@ -467,8 +468,9 @@ void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteA
 				storedChar.vertBearingX = diagram->width;
 				storedChar.vertBearingY = 0;
 				storedChar.vertAdvance = diagram->height;
-				processSvgShape(storedChar, diagram->shape[i], args, isFirstShape);
+				processSvgShape(storedChar, *shape, args);
 				output.storedCharacters.insert(i, storedChar);
+				++i;
 			}
 			break;
 		}
@@ -488,7 +490,7 @@ void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteA
 			storedChar.vertBearingX = diagram->width;
 			storedChar.vertBearingY = 0;
 			storedChar.vertAdvance = diagram->height;
-			processSvgShapes(storedChar, std::span<const svgtiny_shape>(diagram->shape, diagram->shape_count), args);
+			processSvgShapes(storedChar, diagram->shapes, args);
 			output.storedCharacters.insert(0, storedChar);
 			break;
 		}
@@ -497,67 +499,54 @@ void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteA
 
 }
 
-void SdfGenerationContext::processSvgShape(StoredCharacter& output, const svgtiny_shape& shape, const SDFGenerationArguments& args, bool isFirstShape)
+void SdfGenerationContext::processSvgShape(StoredCharacter& output, const NSVGshape& shape, const SDFGenerationArguments& args)
 {
-	if(!shape.path) return;
+	if(!shape.paths) return;
 	output.valid = true;
 	decompositionContext.clear();
-	decomposeSvgShape(decompositionContext, shape, isFirstShape);
+	++decompositionContext.curShapeId;
+	decomposeSvgShape(decompositionContext, shape);
 	//decompositionContext.orientContours();
 	processOutlineGlyphEnd(output,args,false);
 }
 
-void SdfGenerationContext::processSvgShapes(StoredCharacter& output, const std::span<const svgtiny_shape>& shapes, const SDFGenerationArguments& args)
+void SdfGenerationContext::processSvgShapes(StoredCharacter& output, const NSVGshape* shapes, const SDFGenerationArguments& args)
 {
-	bool isValid = false;
-	for(const auto& it : shapes) {
-		isValid = isValid || (it.path != nullptr);
-	}
-	output.valid = isValid;
-	if(!isValid) return;
+	if(!shapes) return;
+	output.valid = true;
 	decompositionContext.clear();
-	bool isFirstShape = true;
-	for(const auto& it : shapes) {
-		if(it.path) decomposeSvgShape(decompositionContext, it, isFirstShape);
-		isFirstShape = false;
+	for (auto shape = shapes; shape; shape = shape->next) {
+		++decompositionContext.curShapeId;
+		decomposeSvgShape(decompositionContext, *shape);
 	}
 	//decompositionContext.orientContours();
 	processOutlineGlyphEnd(output,args,false);
 }
 
-void SdfGenerationContext::decomposeSvgShape(FontOutlineDecompositionContext& decompositionContext, const svgtiny_shape& shape, bool isFirstShape)
+void SdfGenerationContext::decomposeSvgShape(FontOutlineDecompositionContext& decompositionContext, const NSVGshape& shape)
 {
-	if(!shape.path) return;
-	bool isFirstSubcontour = isFirstShape;
-	int moveCount = 0;
-	for (unsigned int i = 0; i < shape.path_length; ) {
-		switch ( static_cast<int>(shape.path[i]) ) {
-			case svgtiny_PATH_MOVE:
-				decompositionContext.moveTo(glm::fvec2(shape.path[i + 1],shape.path[i + 2]), true, moveCount > 1 ? ReverseIf::GREATER : ReverseIf::LESSER );
-				//decompositionContext.moveTo(glm::fvec2(shape.path[i + 1],shape.path[i + 2]), true, isFirstSubcontour ? ReverseIf::GREATER : ReverseIf::LESSER );
-				i += 3;
-				++moveCount;
-				break;
-			case svgtiny_PATH_CLOSE:
-				decompositionContext.closeShape(true, moveCount > 1 ? ReverseIf::GREATER : ReverseIf::LESSER);
-				//decompositionContext.closeShape(true, isFirstSubcontour ? ReverseIf::GREATER : ReverseIf::LESSER);
-				i += 1;
-				isFirstSubcontour = false;
-				break;
-			case svgtiny_PATH_LINE:
-				decompositionContext.lineTo( glm::fvec2(shape.path[i + 1],shape.path[i + 2]) );
-				i += 3;
-				break;
-			case svgtiny_PATH_BEZIER:
-				decompositionContext.cubicTo(
-					glm::fvec2(shape.path[i + 1],shape.path[i + 2]),
-					glm::fvec2(shape.path[i + 3],shape.path[i + 4]),
-					glm::fvec2(shape.path[i + 5],shape.path[i + 6])
-					);
-				i += 7;
-				break;
-			default:
-				throw std::runtime_error("Uh-oh, something went wrong while processing the SVG shape!");
+	if(!shape.paths) return;
+	bool isFirst = true;
+	for (auto path = shape.paths; path; path = path->next) {
+		for (unsigned i = 0; i < path->npts-1; i += 3) {
+			float* p = &path->pts[i*2];
+			//drawCubicBez(p[0],p[1], p[2],p[3], p[4],p[5], p[6],p[7]);
+			decompositionContext.stagingEdges.push_back({});
+			auto& last = decompositionContext.stagingEdges.back();
+			last.type = EdgeType::CUBIC;
+			last.contourId = decompositionContext.curShapeId;
+			last.points[0][0] = p[0];
+			last.points[0][1] = p[1];
+			last.points[1][0] = p[2];
+			last.points[1][1] = p[3];
+			last.points[2][0] = p[4];
+			last.points[2][1] = p[5];
+			last.points[3][0] = p[6];
+			last.points[3][1] = p[7];
 		}
+		decompositionContext.curPos = decompositionContext.stagingEdges.back().points[3];
+		decompositionContext.firstPointInContour = decompositionContext.curPos;
+		decompositionContext.closeShape(true, isFirst ? ReverseIf::LESSER : ReverseIf::GREATER);
+		isFirst = false;
 	}
 }

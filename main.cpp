@@ -46,7 +46,8 @@ int main(int argc, char *argv[])
 			}
 			QFile svgFile(svgpath);
 			if( svgFile.open(QFile::ReadOnly) ) {
-				ctx->processSvg(fontface, svgFile.readAll(), sdfArgs);
+				auto fileContent = svgFile.readAll().append('\0');
+				ctx->processSvg(fontface, fileContent, sdfArgs);
 			}
 		}
 		else if( args.contains( IN_BIN_KEY ) ) {
