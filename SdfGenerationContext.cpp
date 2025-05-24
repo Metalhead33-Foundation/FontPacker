@@ -529,17 +529,18 @@ void SdfGenerationContext::decomposeSvgShape(FontOutlineDecompositionContext& de
 {
 	if(!shape.path) return;
 	bool isFirstSubcontour = isFirstShape;
+	int moveCount = 0;
 	for (unsigned int i = 0; i < shape.path_length; ) {
 		switch ( static_cast<int>(shape.path[i]) ) {
 			case svgtiny_PATH_MOVE:
-				//decompositionContext.moveTo(glm::fvec2(shape.path[i + 1],shape.path[i + 2]), true, isFirstSubcontour ? ReverseIf::LESSER : ReverseIf::GREATER );
-				decompositionContext.moveTo(glm::fvec2(shape.path[i + 1],shape.path[i + 2]), true, isFirstSubcontour ? ReverseIf::GREATER : ReverseIf::LESSER );
+				decompositionContext.moveTo(glm::fvec2(shape.path[i + 1],shape.path[i + 2]), true, moveCount > 1 ? ReverseIf::GREATER : ReverseIf::LESSER );
+				//decompositionContext.moveTo(glm::fvec2(shape.path[i + 1],shape.path[i + 2]), true, isFirstSubcontour ? ReverseIf::GREATER : ReverseIf::LESSER );
 				i += 3;
-				isFirstSubcontour = false;
+				++moveCount;
 				break;
 			case svgtiny_PATH_CLOSE:
-				//decompositionContext.closeShape(true, isFirstSubcontour ? ReverseIf::LESSER : ReverseIf::GREATER);
-				decompositionContext.closeShape(true, isFirstSubcontour ? ReverseIf::GREATER : ReverseIf::LESSER);
+				decompositionContext.closeShape(true, moveCount > 1 ? ReverseIf::GREATER : ReverseIf::LESSER);
+				//decompositionContext.closeShape(true, isFirstSubcontour ? ReverseIf::GREATER : ReverseIf::LESSER);
 				i += 1;
 				isFirstSubcontour = false;
 				break;
