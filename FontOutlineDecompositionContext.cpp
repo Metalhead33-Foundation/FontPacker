@@ -144,6 +144,110 @@ void EdgeSegment::splitIntoThree(EdgeSegment& a, EdgeSegment& b, EdgeSegment& c)
 	}
 }
 
+bool isPointInContour(const glm::fvec2& point, const std::vector<EdgeSegment>& edges, int32_t contourId)
+{
+	int windingNumber = 0;
+
+	for (const auto& edge : edges) {
+		if (edge.contourId != contourId)
+			continue;
+
+		const auto& pts = edge.points;
+
+		// Common vertical ray cast
+		switch (edge.type) {
+			case EdgeType::LINEAR: {
+				glm::fvec2 p1 = pts[LINE_P1];
+				glm::fvec2 p2 = pts[LINE_P2];
+				// Ensure bottom-to-top ordering
+				if (p1.y > p2.y) std::swap(p1, p2);
+
+				// Check if the point is within the vertical range
+				if (point.y < p1.y || point.y > p2.y) break;
+
+				// Find intersection X of the edge with horizontal line at point.y
+				float t = (point.y - p1.y) / (p2.y - p1.y);
+				float xIntersect = glm::mix(p1.x, p2.x, t);
+
+				if (xIntersect > point.x) {
+					windingNumber += (p1.y < p2.y) ? 1 : -1;
+				}
+				break;
+			}
+
+			case EdgeType::QUADRATIC: {
+				glm::fvec2 p0 = pts[QUADRATIC_P1];
+				glm::fvec2 p1 = pts[QUADRATIC_CONTROL];
+				glm::fvec2 p2 = pts[QUADRATIC_P2];
+
+				// Solve quadratic Bezier for intersections with horizontal line y = point.y
+				// B(t).y = (1 - t)^2*p0.y + 2(1 - t)t*p1.y + t^2*p2.y = point.y
+				float a = p0.y - 2.0f * p1.y + p2.y;
+				float b = -2.0f * (p0.y - p1.y);
+				float c = p0.y - point.y;
+
+				float discriminant = b*b - 4*a*c;
+				if (discriminant < 0) break;
+
+				float sqrtD = std::sqrt(discriminant);
+				for (float t : {
+						 (-b - sqrtD) / (2*a),
+						 (-b + sqrtD) / (2*a)
+					 }) {
+					if (t < 0.0f || t > 1.0f) continue;
+
+					glm::fvec2 pt =
+						(1 - t)*(1 - t)*p0 +
+						2*(1 - t)*t*p1 +
+						t*t*p2;
+
+					if (pt.x > point.x) {
+						// Determine direction by derivative
+						float dy = 2*(1 - t)*(p1.y - p0.y) + 2*t*(p2.y - p1.y);
+						windingNumber += (dy > 0) ? 1 : -1;
+					}
+				}
+				break;
+			}
+
+			case EdgeType::CUBIC: {
+				// We'll solve B(t).y = point.y numerically (e.g., using subdivision or Newton-Raphson).
+				// For simplicity, use subdivision here.
+				glm::fvec2 p0 = pts[CUBIC_P1];
+				glm::fvec2 p1 = pts[CUBIC_CONTROL1];
+				glm::fvec2 p2 = pts[CUBIC_CONTROL2];
+				glm::fvec2 p3 = pts[CUBIC_P2];
+
+				const int steps = 20;
+				glm::fvec2 prev = p0;
+				for (int i = 1; i <= steps; ++i) {
+					float t = static_cast<float>(i) / steps;
+					float u = 1 - t;
+					glm::fvec2 curr =
+						u*u*u * p0 +
+						3*u*u*t * p1 +
+						3*u*t*t * p2 +
+						t*t*t * p3;
+
+					if ((prev.y <= point.y && curr.y > point.y) ||
+						(prev.y > point.y && curr.y <= point.y)) {
+						// Linear interpolation between prev and curr
+						float tLine = (point.y - prev.y) / (curr.y - prev.y);
+						float xIntersect = glm::mix(prev.x, curr.x, tLine);
+						if (xIntersect > point.x) {
+							windingNumber += (curr.y > prev.y) ? 1 : -1;
+						}
+					}
+
+					prev = curr;
+				}
+				break;
+			}
+		}
+	}
+
+	return windingNumber != 0;
+}
 Orientation computeWinding(const std::span<const EdgeSegment>& contour, int samplesPerCurve) {
 	std::vector<glm::vec2> points;
 
@@ -440,23 +544,26 @@ void FontOutlineDecompositionContext::closeShape(bool checkWinding)
 	if(stagingEdges.size()) {
 		normalizeContour(stagingEdges);
 		if(checkWinding) {
-			BoundingBox bb;
-			bb.top = std::numeric_limits<float>::max();
-			bb.left = std::numeric_limits<float>::max();
-			bb.bottom = std::numeric_limits<float>::min();
-			bb.right = std::numeric_limits<float>::min();
+			ContourInfo ci;
+			ci.bb.top = std::numeric_limits<float>::max();
+			ci.bb.left = std::numeric_limits<float>::max();
+			ci.bb.bottom = std::numeric_limits<float>::min();
+			ci.bb.right = std::numeric_limits<float>::min();
 			for(const auto& it : stagingEdges) {
-				bb.left = std::min(bb.left, it.getMinX() );
-				bb.top = std::min(bb.top, it.getMinY() );
-				bb.right = std::max(bb.right, it.getMaxX() );
-				bb.bottom = std::max(bb.bottom, it.getMaxY() );
+				ci.bb.left = std::min(ci.bb.left, it.getMinX() );
+				ci.bb.top = std::min(ci.bb.top, it.getMinY() );
+				ci.bb.right = std::max(ci.bb.right, it.getMaxX() );
+				ci.bb.bottom = std::max(ci.bb.bottom, it.getMaxY() );
 			}
+			ci.contourId = stagingEdges.back().contourId;
 			int containments = 0;
-			for(auto& it : boundingBoxHierarchy) {
-				if(bb.top >= it.top && bb.left >= it.left
-					&& bb.bottom <= it.bottom && bb.right <= it.right) ++containments;
+			for(auto& it : contourInfo) {
+				if(ci.bb.top >= it.bb.top && ci.bb.left >= it.bb.left
+					&& ci.bb.bottom <= it.bb.bottom && ci.bb.right <= it.bb.right) {
+					if( isPointInContour( glm::fvec2( (ci.bb.left + ci.bb.right) * 0.5f, (ci.bb.bottom + ci.bb.top) * 0.5f ), edges, it.contourId ) ) ++containments;;
+				}
 			}
-			boundingBoxHierarchy.push_back(bb);
+			contourInfo.push_back(ci);
 			bool isContainmentOdd = static_cast<bool>(containments % 2);
 			auto orientation = computeWinding(stagingEdges,10);
 			if ( (isContainmentOdd && orientation != Orientation::CW ) || (!isContainmentOdd && orientation != Orientation::CCW ) ) {
@@ -1180,7 +1287,7 @@ void FontOutlineDecompositionContext::clear()
 	firstPointInContour = glm::fvec2(0.0f, 0.0f);
 	edges.clear();
 	curShapeId = 0;
-	boundingBoxHierarchy.clear();
+	contourInfo.clear();
 }
 
 Orientation checkOrientation(const glm::fvec2& A, const glm::fvec2& B)

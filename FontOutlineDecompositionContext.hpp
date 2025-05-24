@@ -72,9 +72,14 @@ struct EdgeSegment {
 	int scanlineIntersections(double x[], int dy[3], double y) const;
 };
 Orientation computeWinding(const std::span<const EdgeSegment>& contour, int samplesPerCurve = 10);
+bool isPointInContour(const glm::fvec2& point, const std::vector<EdgeSegment>& edges, int32_t contourId);
 
 struct BoundingBox {
 	float top, bottom, left, right;
+};
+struct ContourInfo {
+	BoundingBox bb;
+	int32_t contourId;
 };
 
 struct FontOutlineDecompositionContext {
@@ -83,7 +88,7 @@ struct FontOutlineDecompositionContext {
 	typedef std::pair<int32_t,int32_t> ContourDefinition;
 	typedef std::map<int32_t,ContourDefinition> ContourMap;
 	typedef std::vector<ContourDefinition> ContourVector;
-	std::vector<BoundingBox> boundingBoxHierarchy;
+	std::vector<ContourInfo> contourInfo;
 	glm::fvec2 curPos = glm::fvec2(0.0f, 0.0f);
 	glm::fvec2 firstPointInContour = glm::fvec2(0.0f, 0.0f);
 	std::vector<EdgeSegment> edges;
