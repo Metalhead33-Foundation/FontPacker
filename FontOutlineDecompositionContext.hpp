@@ -42,11 +42,6 @@ enum class EdgeColor : uint32_t {
 	WHITE = 0xFFFFFF
 };
 
-enum class ReverseIf : uint8_t {
-	GREATER,
-	LESSER
-};
-
 enum class Orientation {
 	CW = 0,      // Clockwise
 	CCW = 1,     // Counterclockwise
@@ -76,6 +71,11 @@ struct EdgeSegment {
 	void deconverge(int param, const glm::fvec2& vector);
 	int scanlineIntersections(double x[], int dy[3], double y) const;
 };
+Orientation computeWinding(const std::span<const EdgeSegment>& contour, int samplesPerCurve = 10);
+
+struct BoundingBox {
+	float top, bottom, left, right;
+};
 
 struct FontOutlineDecompositionContext {
 	typedef std::vector<std::vector<size_t>> IdShapeMap;
@@ -83,13 +83,14 @@ struct FontOutlineDecompositionContext {
 	typedef std::pair<int32_t,int32_t> ContourDefinition;
 	typedef std::map<int32_t,ContourDefinition> ContourMap;
 	typedef std::vector<ContourDefinition> ContourVector;
+	std::vector<BoundingBox> boundingBoxHierarchy;
 	glm::fvec2 curPos = glm::fvec2(0.0f, 0.0f);
 	glm::fvec2 firstPointInContour = glm::fvec2(0.0f, 0.0f);
 	std::vector<EdgeSegment> edges;
 	std::vector<EdgeSegment> stagingEdges;
 	int32_t curShapeId = 0;
-	void closeShape(bool checkWinding=false, ReverseIf reversIf = ReverseIf::GREATER);
-	int moveTo(const glm::fvec2& to, bool checkWinding=false, ReverseIf reversIf = ReverseIf::GREATER );
+	void closeShape(bool checkWinding=false);
+	int moveTo(const glm::fvec2& to, bool checkWinding=false);
 	int lineTo(const glm::fvec2& to);
 	int conicTo(const glm::fvec2& control, const glm::fvec2&  to);
 	int cubicTo(const glm::fvec2& control1, const glm::fvec2& control2, const glm::fvec2& to);

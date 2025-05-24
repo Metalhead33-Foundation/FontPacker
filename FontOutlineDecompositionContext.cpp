@@ -144,6 +144,51 @@ void EdgeSegment::splitIntoThree(EdgeSegment& a, EdgeSegment& b, EdgeSegment& c)
 	}
 }
 
+Orientation computeWinding(const std::span<const EdgeSegment>& contour, int samplesPerCurve) {
+	std::vector<glm::vec2> points;
+
+	for (const EdgeSegment& seg : contour) {
+		switch (seg.type) {
+			case EdgeType::LINEAR: {
+				points.push_back(seg.points[LINE_P1]);
+				break; // Only add start point, next segment continues
+			}
+			case EdgeType::QUADRATIC: {
+				for (int i = 0; i < samplesPerCurve; ++i) {
+					float t = float(i) / samplesPerCurve;
+					points.push_back(bezier2(seg.points[0], seg.points[1], seg.points[2], t));
+				}
+				break;
+			}
+			case EdgeType::CUBIC: {
+				for (int i = 0; i < samplesPerCurve; ++i) {
+					float t = float(i) / samplesPerCurve;
+					points.push_back(bezier3(seg.points[0], seg.points[1], seg.points[2], seg.points[3], t));
+				}
+				break;
+			}
+		}
+	}
+
+	// Make sure it's a closed loop
+	if (!points.empty() && points.front() != points.back())
+		points.push_back(points.front());
+
+	// Compute signed area
+	float area = 0.0f;
+	for (size_t i = 0; i + 1 < points.size(); ++i) {
+		area += crossProduct(points[i], points[i + 1]);
+	}
+	area *= 0.5f;
+
+	if (area > 1e-5f)
+		return Orientation::CCW;
+	else if (area < -1e-5f)
+		return Orientation::CW;
+	else
+		return Orientation::COLINEAR;
+}
+
 
 float FontOutlineDecompositionContext::computeSignedArea(const std::span<const EdgeSegment>& contourEdges, int subdivisions) {
 	float area = 0.0f;
@@ -388,34 +433,37 @@ template<typename T, size_t N> void zeroOut(std::array<T,N>& data) {
 	zeroOut(std::span<T>(data.data(),N));
 }
 
-void FontOutlineDecompositionContext::closeShape(bool checkWinding, ReverseIf reversIf)
+void FontOutlineDecompositionContext::closeShape(bool checkWinding)
 {
 	if (curPos != firstPointInContour)
 		lineTo(firstPointInContour); // Close the contour
 	if(stagingEdges.size()) {
 		normalizeContour(stagingEdges);
 		if(checkWinding) {
-			auto computedArea = computeSignedArea(stagingEdges);
-			switch (reversIf) {
-				case ReverseIf::GREATER: {
-					if (computedArea >= 0.0f) {
-						for(auto& it : stagingEdges) {
-							it.invert();
-						}
-						std::reverse(stagingEdges.begin(),stagingEdges.end());
-					}
-					break;
+			BoundingBox bb;
+			bb.top = std::numeric_limits<float>::max();
+			bb.left = std::numeric_limits<float>::max();
+			bb.bottom = std::numeric_limits<float>::min();
+			bb.right = std::numeric_limits<float>::min();
+			for(const auto& it : stagingEdges) {
+				bb.left = std::min(bb.left, it.getMinX() );
+				bb.top = std::min(bb.top, it.getMinY() );
+				bb.right = std::max(bb.right, it.getMaxX() );
+				bb.bottom = std::max(bb.bottom, it.getMaxY() );
+			}
+			int containments = 0;
+			for(auto& it : boundingBoxHierarchy) {
+				if(bb.top >= it.top && bb.left >= it.left
+					&& bb.bottom <= it.bottom && bb.right <= it.right) ++containments;
+			}
+			boundingBoxHierarchy.push_back(bb);
+			bool isContainmentOdd = static_cast<bool>(containments % 2);
+			auto orientation = computeWinding(stagingEdges,10);
+			if ( (isContainmentOdd && orientation != Orientation::CW ) || (!isContainmentOdd && orientation != Orientation::CCW ) ) {
+				for(auto& it : stagingEdges) {
+					it.invert();
 				}
-				case ReverseIf::LESSER: {
-					if (computedArea <= 0.0f) {
-						for(auto& it : stagingEdges) {
-							it.invert();
-						}
-						std::reverse(stagingEdges.begin(),stagingEdges.end());
-					}
-					break;
-				}
-				default: break;
+				std::reverse(stagingEdges.begin(),stagingEdges.end());
 			}
 		}
 		edges.insert(edges.end(),stagingEdges.begin(), stagingEdges.end());
@@ -423,7 +471,7 @@ void FontOutlineDecompositionContext::closeShape(bool checkWinding, ReverseIf re
 	}
 }
 
-int FontOutlineDecompositionContext::moveTo(const glm::fvec2& to, bool checkWinding, ReverseIf reversIf)
+int FontOutlineDecompositionContext::moveTo(const glm::fvec2& to, bool checkWinding)
 {
 	closeShape(checkWinding);
 	curPos = to;
@@ -1132,6 +1180,7 @@ void FontOutlineDecompositionContext::clear()
 	firstPointInContour = glm::fvec2(0.0f, 0.0f);
 	edges.clear();
 	curShapeId = 0;
+	boundingBoxHierarchy.clear();
 }
 
 Orientation checkOrientation(const glm::fvec2& A, const glm::fvec2& B)
