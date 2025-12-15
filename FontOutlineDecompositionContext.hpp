@@ -73,6 +73,7 @@ struct EdgeSegment {
 };
 Orientation computeWinding(const std::span<const EdgeSegment>& contour, int samplesPerCurve = 10);
 bool isPointInContour(const glm::fvec2& point, const std::vector<EdgeSegment>& edges, int32_t contourId);
+bool isContourInContour(const std::span<const EdgeSegment>& innerContour, const std::vector<EdgeSegment>& allEdges, int32_t outerContourId, int samplesPerEdge = 5);
 
 struct BoundingBox {
 	float top, bottom, left, right;

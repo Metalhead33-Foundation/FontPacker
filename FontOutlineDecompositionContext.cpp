@@ -248,6 +248,33 @@ bool isPointInContour(const glm::fvec2& point, const std::vector<EdgeSegment>& e
 
 	return windingNumber != 0;
 }
+
+bool isContourInContour(const std::span<const EdgeSegment>& innerContour, const std::vector<EdgeSegment>& allEdges, int32_t outerContourId, int samplesPerEdge)
+{
+	// Sample multiple points from the inner contour to verify full containment
+	// This is more robust than checking a single point (polygon-in-polygon vs point-in-polygon)
+	
+	if (innerContour.empty())
+		return false;
+
+	for (const auto& edge : innerContour) {
+		// Sample points along each edge
+		const int steps = (edge.type == EdgeType::LINEAR) ? 1 : samplesPerEdge;
+		
+		for (int i = 0; i <= steps; ++i) {
+			float t = (steps > 0) ? static_cast<float>(i) / steps : 0.0f;
+			glm::fvec2 samplePoint = edge.point(t);
+			
+			// If any sample point is not inside the outer contour, the inner contour is not fully contained
+			if (!isPointInContour(samplePoint, allEdges, outerContourId)) {
+				return false;
+			}
+		}
+	}
+	
+	return true;
+}
+
 Orientation computeWinding(const std::span<const EdgeSegment>& contour, int samplesPerCurve) {
 	std::vector<glm::vec2> points;
 
@@ -560,7 +587,9 @@ void FontOutlineDecompositionContext::closeShape(bool checkWinding)
 			for(auto& it : contourInfo) {
 				if(ci.bb.top >= it.bb.top && ci.bb.left >= it.bb.left
 					&& ci.bb.bottom <= it.bb.bottom && ci.bb.right <= it.bb.right) {
-					if( isPointInContour( glm::fvec2( (ci.bb.left + ci.bb.right) * 0.5f, (ci.bb.bottom + ci.bb.top) * 0.5f ), edges, it.contourId ) ) ++containments;;
+					// Use polygon-in-polygon check instead of point-in-polygon for more robust hole detection
+					std::span<const EdgeSegment> innerContour(stagingEdges);
+					if( isContourInContour( innerContour, edges, it.contourId ) ) ++containments;
 				}
 			}
 			contourInfo.push_back(ci);
