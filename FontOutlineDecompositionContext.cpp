@@ -251,28 +251,64 @@ bool isPointInContour(const glm::fvec2& point, const std::vector<EdgeSegment>& e
 
 bool isContourInContour(const std::span<const EdgeSegment>& innerContour, const std::vector<EdgeSegment>& allEdges, int32_t outerContourId, int samplesPerEdge)
 {
-	// Sample multiple points from the inner contour to verify full containment
-	// This is more robust than checking a single point (polygon-in-polygon vs point-in-polygon)
+	// Refined polygon-in-polygon check for robust hole detection
+	// Uses multiple strategies to avoid false positives/negatives
 	
 	if (innerContour.empty())
 		return false;
 
+	// Strategy 1: Check representative interior point (more robust than edge sampling for containment)
+	// Compute a point that's clearly in the interior by using centroid or center offset inward
+	float centerX = 0.0f, centerY = 0.0f;
+	int pointCount = 0;
 	for (const auto& edge : innerContour) {
-		// Sample points along each edge
-		const int steps = (edge.type == EdgeType::LINEAR) ? 1 : samplesPerEdge;
+		centerX += edge.point(0.0f).x;
+		centerY += edge.point(0.0f).y;
+		pointCount++;
+	}
+	if (pointCount > 0) {
+		centerX /= pointCount;
+		centerY /= pointCount;
+	}
+	
+	// Check the center point - if this is not inside, the contour is definitely not contained
+	glm::fvec2 centerPoint(centerX, centerY);
+	if (!isPointInContour(centerPoint, allEdges, outerContourId)) {
+		return false;
+	}
+	
+	// Strategy 2: Sample points along edges with higher density for curves
+	// Use a threshold approach: require majority of points to be inside
+	int insideCount = 0;
+	int totalSamples = 0;
+	
+	for (const auto& edge : innerContour) {
+		// Use more samples for curved edges (they're more likely to cross boundaries)
+		int steps = (edge.type == EdgeType::LINEAR) ? 2 : 
+		            (edge.type == EdgeType::QUADRATIC) ? samplesPerEdge * 2 : 
+		            samplesPerEdge * 3; // Cubic curves need even more samples
 		
 		for (int i = 0; i <= steps; ++i) {
 			float t = (steps > 0) ? static_cast<float>(i) / steps : 0.0f;
 			glm::fvec2 samplePoint = edge.point(t);
+			totalSamples++;
 			
-			// If any sample point is not inside the outer contour, the inner contour is not fully contained
-			if (!isPointInContour(samplePoint, allEdges, outerContourId)) {
-				return false;
+			if (isPointInContour(samplePoint, allEdges, outerContourId)) {
+				insideCount++;
 			}
 		}
 	}
 	
-	return true;
+	// Strategy 3: Require very high percentage (>= 95%) of sampled points to be inside
+	// For proper containment, nearly all points should be inside (accounting for floating point precision)
+	float insideRatio = (totalSamples > 0) ? static_cast<float>(insideCount) / totalSamples : 0.0f;
+	const float threshold = 0.95f; // 95% threshold - stricter for accurate hole detection
+	
+	// Additionally, ensure we have at least some minimum number of inside points
+	// This prevents false positives when sampling is sparse
+	const int minInsidePoints = std::max(3, totalSamples / 10); // At least 3 points or 10% of samples
+	
+	return (insideRatio >= threshold) && (insideCount >= minInsidePoints);
 }
 
 Orientation computeWinding(const std::span<const EdgeSegment>& contour, int samplesPerCurve) {
@@ -585,9 +621,23 @@ void FontOutlineDecompositionContext::closeShape(bool checkWinding)
 			ci.contourId = stagingEdges.back().contourId;
 			int containments = 0;
 			for(auto& it : contourInfo) {
-				if(ci.bb.top >= it.bb.top && ci.bb.left >= it.bb.left
-					&& ci.bb.bottom <= it.bb.bottom && ci.bb.right <= it.bb.right) {
-					// Use polygon-in-polygon check instead of point-in-polygon for more robust hole detection
+				// Improved bounding box precondition: check if inner bbox could potentially be inside outer
+				// We use a relaxed check to catch cases where bboxes overlap but allow the polygon check to decide
+				float innerCenterX = (ci.bb.left + ci.bb.right) * 0.5f;
+				float innerCenterY = (ci.bb.top + ci.bb.bottom) * 0.5f;
+				
+				// Inner bbox center should be inside outer bbox (with small tolerance for numerical issues)
+				float tolerance = std::max((it.bb.right - it.bb.left) * 0.01f, (it.bb.bottom - it.bb.top) * 0.01f);
+				bool centerInsideBBox = (innerCenterX >= it.bb.left - tolerance && innerCenterX <= it.bb.right + tolerance &&
+				                         innerCenterY >= it.bb.top - tolerance && innerCenterY <= it.bb.bottom + tolerance);
+				
+				// Inner bbox should not be much larger than outer (holes should be smaller)
+				float innerArea = (ci.bb.right - ci.bb.left) * (ci.bb.bottom - ci.bb.top);
+				float outerArea = (it.bb.right - it.bb.left) * (it.bb.bottom - it.bb.top);
+				bool sizeReasonable = (innerArea < outerArea * 1.1f); // Allow 10% margin for numerical precision
+				
+				if(centerInsideBBox && sizeReasonable) {
+					// Use polygon-in-polygon check for accurate hole detection
 					std::span<const EdgeSegment> innerContour(stagingEdges);
 					if( isContourInContour( innerContour, edges, it.contourId ) ) ++containments;
 				}
