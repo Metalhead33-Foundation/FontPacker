@@ -1,3 +1,14 @@
+/**
+ * @file MainWindow.hpp
+ * @brief Main GUI window for FontPacker application.
+ * 
+ * Provides a Qt-based graphical user interface for:
+ * - Loading fonts and SVG files
+ * - Configuring SDF generation parameters
+ * - Previewing generated glyphs
+ * - Saving preprocessed font data in various formats
+ */
+
 #ifndef MAINWINDOW_HPP
 #define MAINWINDOW_HPP
 #include <QMainWindow>
@@ -11,12 +22,20 @@ namespace Ui {
 class MainWindow;
 }
 
+/**
+ * @brief Application state enumeration.
+ * @enum MainWindowState
+ */
 enum MainWindowState {
-	INITIAL,
-	FONT_PATH_SET,
-	PREPROCESSED_FONT_LAODED
+	INITIAL,                    ///< Initial state, no font loaded
+	FONT_PATH_SET,             ///< Font path has been set
+	PREPROCESSED_FONT_LAODED  ///< Preprocessed font has been loaded
 };
 
+/**
+ * @brief Main application window class.
+ * @class MainWindow
+ */
 class MainWindow : public QMainWindow
 {
 	Q_OBJECT

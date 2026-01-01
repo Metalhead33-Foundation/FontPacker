@@ -1,3 +1,12 @@
+/**
+ * @file StoredCharacter.cpp
+ * @brief Implementation of StoredCharacter serialization and deserialization.
+ * 
+ * Implements conversion between StoredCharacter structures and:
+ * - CBOR format (for JSON-like serialization)
+ * - Binary QDataStream format (see BINARY_FORMAT.md)
+ */
+
 #include "StoredCharacter.hpp"
 #include "ConstStrings.hpp"
 

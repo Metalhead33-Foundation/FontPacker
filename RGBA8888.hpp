@@ -1,8 +1,21 @@
+/**
+ * @file RGBA8888.hpp
+ * @brief RGBA color structure with 8 bits per channel.
+ * 
+ * Provides a simple RGBA color structure with utility functions for
+ * color operations (averaging, max, conversion from float vectors).
+ */
+
 #ifndef RGBA8888_HPP
 #define RGBA8888_HPP
 #include <cstdint>
 #include <algorithm>
 #include <glm/glm.hpp>
+
+/**
+ * @brief RGBA color structure (8 bits per channel).
+ * @struct RGBA8888
+ */
 struct RGBA8888 {
 	uint8_t r;
 	uint8_t g;

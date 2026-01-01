@@ -1,3 +1,18 @@
+/**
+ * @file main.cpp
+ * @brief Main entry point for FontPacker application.
+ * 
+ * Provides both GUI and command-line interfaces for generating signed distance fields
+ * from fonts and SVG files. Supports multiple output formats (binary, CBOR) and
+ * multiple rendering modes (software CPU, OpenGL compute shaders).
+ * 
+ * Command-line usage:
+ * - Use "nogui" argument to run in command-line mode
+ * - Input: --infont <path> or --insvg <path> or --inbin <path> or --incbor <path>
+ * - Output: --outbin <path> or --outcbor <path> or --outfont <pattern>
+ * - See SDFGenerationArguments for all available options
+ */
+
 #include <QApplication>
 #include <QVariant>
 #include <QTextStream>
@@ -8,7 +23,20 @@
 #include "SdfGenerationContextSoft.hpp"
 #include "MainWindow.hpp"
 
+/**
+ * @brief Parse command-line arguments into a QVariantMap.
+ * @param argc Argument count.
+ * @param argv Argument vector.
+ * @return Map of argument keys to values.
+ */
 QVariantMap parseArguments(int argc, char *argv[]);
+
+/**
+ * @brief Main entry point.
+ * @param argc Argument count.
+ * @param argv Argument vector.
+ * @return Exit code (0 on success).
+ */
 int main(int argc, char *argv[])
 {
 	QApplication a(argc, argv);

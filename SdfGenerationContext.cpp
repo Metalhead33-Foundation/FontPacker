@@ -1,3 +1,15 @@
+/**
+ * @file SdfGenerationContext.cpp
+ * @brief Implementation of base SDF generation context.
+ * 
+ * Implements common functionality for SDF generation:
+ * - Font processing (FreeType integration)
+ * - SVG processing (svgtiny integration)
+ * - Outline and bitmap glyph processing
+ * - Image downsampling utilities
+ * - FreeType outline decomposition callbacks
+ */
+
 #include "RGBA8888.hpp"
 #include "SdfGenerationContext.hpp"
 #include <stdexcept>

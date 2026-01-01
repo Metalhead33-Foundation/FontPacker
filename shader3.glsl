@@ -1,26 +1,62 @@
+/**
+ * @file shader3.glsl
+ * @brief OpenGL compute shader for generating single-channel SDF from vector outlines.
+ * 
+ * This shader computes signed distance fields directly from vector edge segments
+ * (lines, quadratic and cubic Bezier curves). It uses winding number calculation to
+ * determine inside/outside and computes distances analytically for lines and
+ * numerically for Bezier curves.
+ * 
+ * @version 430 core
+ * @requires OpenGL 4.3+ with compute shader support
+ */
+
 #version 430 core
 layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+/**
+ * @brief Output SDF texture (32-bit float, single channel).
+ * @binding 1
+ */
 layout (binding = 1, r32f) writeonly uniform image2D rawSdfTexture;
+
+/**
+ * @brief Output inside/outside mask texture (8-bit).
+ * @binding 2
+ */
 layout (binding = 2, r8) writeonly uniform image2D isInsideTex;
 
-const int LINEAR = 0;
-const int QUADRATIC = 1;
-const int CUBIC = 2;
+const int LINEAR = 0;     ///< Edge type: line segment
+const int QUADRATIC = 1;  ///< Edge type: quadratic Bezier curve
+const int CUBIC = 2;     ///< Edge type: cubic Bezier curve
 
+/**
+ * @brief Edge segment structure matching C++ EdgeSegment.
+ * @struct EdgeSegment
+ */
 struct EdgeSegment {
-    int type;
-    int shapeId;
-    uint clr; // Currently unused, reserved for MSDF generation
-    vec2 points[4];
+    int type;        ///< Edge type (LINEAR, QUADRATIC, or CUBIC)
+    int shapeId;     ///< Shape/contour ID this edge belongs to
+    uint clr;        ///< Edge color (currently unused, reserved for MSDF)
+    vec2 points[4];  ///< Control points (up to 4 depending on type)
 };
 
+/**
+ * @brief Shader storage buffer containing all edge segments.
+ * @binding 3
+ */
 layout(std430, binding = 3) buffer EdgeBuffer {
-    EdgeSegment edges[];
+    EdgeSegment edges[];  ///< Array of edge segments
 };
 
+/**
+ * @brief Uniform buffer containing dimensions.
+ * @binding 4
+ * @struct Dimensions
+ */
 layout (binding = 4, std140) uniform Dimensions {
-    int intendedSampleWidth;
-    int intendedSampleHeight;
+    int intendedSampleWidth;   ///< Sample search width (used for max distance calculation)
+    int intendedSampleHeight; ///< Sample search height (used for max distance calculation)
 };
 
 #ifdef USE_MANHATTAN_DISTANCE
@@ -106,6 +142,11 @@ int calculateWindingFor(vec2 pos, uint i) {
     return winding;
 }
 
+/**
+ * @brief Calculate winding number for a position across all edges.
+ * @param pos Position to test.
+ * @return Winding number (non-zero means inside).
+ */
 int calculateWinding(vec2 pos) {
     int windingNumber = 0;
     for (int i = 0; i < edges.length(); ++i) {
@@ -114,6 +155,17 @@ int calculateWinding(vec2 pos) {
     return windingNumber;
 }
 
+/**
+ * @brief Main compute shader entry point.
+ * 
+ * For each pixel:
+ * 1. Calculates winding number to determine inside/outside
+ * 2. Finds minimum distance to all edge segments
+ * 3. Writes signed distance and inside/outside flag
+ * 
+ * Note: SDF values are not normalized here; normalization is performed
+ * in a separate CPU pass.
+ */
 void main(void) {
     ivec2 threadId = ivec2(gl_GlobalInvocationID.xy);
     ivec2 imageDimensions = imageSize(rawSdfTexture);

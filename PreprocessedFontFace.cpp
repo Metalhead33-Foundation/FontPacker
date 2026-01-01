@@ -1,3 +1,14 @@
+/**
+ * @file PreprocessedFontFace.cpp
+ * @brief Implementation of PreprocessedFontFace serialization and deserialization.
+ * 
+ * Implements conversion between PreprocessedFontFace structures and:
+ * - CBOR format (for JSON-like serialization)
+ * - Binary QDataStream format (see BINARY_FORMAT.md)
+ * 
+ * Also implements kerning map serialization operators.
+ */
+
 #include "PreprocessedFontFace.hpp"
 #include "StoredCharacter.hpp"
 #include "ConstStrings.hpp"

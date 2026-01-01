@@ -1,3 +1,11 @@
+/**
+ * @file OpenGLCanvas.hpp
+ * @brief OpenGL widget for displaying SDF textures in the GUI.
+ * 
+ * Provides a Qt OpenGL widget for rendering and displaying signed distance field
+ * textures. Used in the main window for glyph preview functionality.
+ */
+
 #ifndef OPENGLCANVAS_HPP
 #define OPENGLCANVAS_HPP
 #include <QObject>
@@ -12,6 +20,10 @@
 #include <QColor>
 #include <QRgb>
 
+/**
+ * @brief OpenGL widget for rendering SDF textures.
+ * @class OpenGLCanvas
+ */
 class OpenGLCanvas : public QOpenGLWidget
 {
 	Q_OBJECT

@@ -1,26 +1,68 @@
+/**
+ * @file shader3_msdf.glsl
+ * @brief OpenGL compute shader for generating multi-channel SDF (MSDF) from vector outlines.
+ * 
+ * This shader computes true multi-channel signed distance fields from vector edge segments.
+ * It uses edge coloring information to assign edges to different channels (R, G, B) and
+ * computes signed distances per channel. The alpha channel contains a regular SDF.
+ * 
+ * Features:
+ * - Supports linear, quadratic, and cubic Bezier edge segments
+ * - Per-channel distance calculation based on edge colors
+ * - Winding number calculation for inside/outside determination
+ * - Pseudo-distance calculation for better accuracy near curves
+ * 
+ * @version 430 core
+ * @requires OpenGL 4.3+ with compute shader support
+ */
+
 #version 430 core
 layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+/**
+ * @brief Output MSDF texture (32-bit float RGBA).
+ * RGB = MSDF channels, A = regular SDF.
+ * @binding 1
+ */
 layout (binding = 1, rgba32f) writeonly uniform image2D rawSdfTexture;
+
+/**
+ * @brief Output inside/outside mask texture (RGBA8, one channel per MSDF channel).
+ * @binding 2
+ */
 layout (binding = 2, rgba8) writeonly uniform image2D isInsideTex;
 
-const int LINEAR = 0;
-const int QUADRATIC = 1;
-const int CUBIC = 2;
+const int LINEAR = 0;     ///< Edge type: line segment
+const int QUADRATIC = 1;  ///< Edge type: quadratic Bezier curve
+const int CUBIC = 2;     ///< Edge type: cubic Bezier curve
 
+/**
+ * @brief Edge segment structure matching C++ EdgeSegment.
+ * @struct EdgeSegment
+ */
 struct EdgeSegment {
-    int type;
-    int shapeId;
-    uint clr;
-    vec2 points[4];
+    int type;        ///< Edge type (LINEAR, QUADRATIC, or CUBIC)
+    int shapeId;     ///< Shape/contour ID this edge belongs to
+    uint clr;        ///< Edge color (RRGGBBXX format, determines which MSDF channel this edge contributes to)
+    vec2 points[4];  ///< Control points (up to 4 depending on type)
 };
 
+/**
+ * @brief Shader storage buffer containing all edge segments.
+ * @binding 3
+ */
 layout(std430, binding = 3) buffer EdgeBuffer {
-    EdgeSegment edges[];
+    EdgeSegment edges[];  ///< Array of edge segments
 };
 
+/**
+ * @brief Uniform buffer containing dimensions.
+ * @binding 4
+ * @struct Dimensions
+ */
 layout (binding = 4, std140) uniform Dimensions {
-    int intendedSampleWidth;
-    int intendedSampleHeight;
+    int intendedSampleWidth;   ///< Sample search width (used for max distance calculation)
+    int intendedSampleHeight; ///< Sample search height (used for max distance calculation)
 };
 
 #ifdef USE_MANHATTAN_DISTANCE

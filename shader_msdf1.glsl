@@ -1,23 +1,63 @@
+/**
+ * @file shader_msdf1.glsl
+ * @brief OpenGL compute shader for generating multi-channel SDF (MSDF) from bitmap images.
+ * 
+ * This shader computes a simplified multi-channel signed distance field from
+ * rasterized bitmap images. Each channel (R, G, B) tracks the distance to the
+ * nearest edge in a different direction (horizontal, vertical, diagonal).
+ * 
+ * @version 430 core
+ * @requires OpenGL 4.3+ with compute shader support
+ */
+
 #version 430 core
 
 layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
-// Input image texture
+/**
+ * @brief Input bitmap texture (8-bit grayscale).
+ * @binding 0
+ */
 layout (binding = 0, r8) readonly uniform image2D fontTexture;
 
-// Output SDF texture
+/**
+ * @brief Output MSDF texture (32-bit float, RGB channels).
+ * @binding 1
+ */
 layout (binding = 1, r32f) writeonly uniform image2D rawSdfTexture;
+
+/**
+ * @brief Output inside/outside mask texture (RGBA8).
+ * @binding 2
+ */
 layout (binding = 2, rgba8) writeonly uniform image2D isInsideTex;
 
-// Texture dimensions
+/**
+ * @brief Uniform buffer containing texture dimensions.
+ * @binding 3
+ * @struct Dimensions
+ */
 layout (binding = 3, std140) uniform Dimensions {
-    int intendedSampleWidth;
-    int intendedSampleHeight;
+    int intendedSampleWidth;   ///< Sample search width in pixels
+    int intendedSampleHeight; ///< Sample search height in pixels
 };
 
 #define MAX_SAMPLES_DIM 4
 
-// Function to calculate the distance to the nearest edge
+/**
+ * @brief Calculate multi-channel distance to nearest edges.
+ * 
+ * Searches in three directions:
+ * - Red channel: horizontal (X-axis) direction
+ * - Green channel: vertical (Y-axis) direction
+ * - Blue channel: diagonal direction
+ * 
+ * @param threadId Current pixel position.
+ * @param texSize Texture dimensions.
+ * @param maxDistance Maximum search distance.
+ * @param isInside Whether the current pixel is inside the shape.
+ * @return vec3 containing distances for R, G, B channels (normalized 0.0-1.0).
+ */
 vec3 calculateDistance(ivec2 threadId, ivec2 texSize, float maxDistance, bool isInside) {
     vec3 minDistance = vec3(maxDistance,maxDistance,maxDistance);
     // Calculate red channel - the closest edge in the horizontal (X-axis) direction.

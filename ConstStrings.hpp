@@ -1,3 +1,15 @@
+/**
+ * @file ConstStrings.hpp
+ * @brief String constants used throughout the application.
+ * 
+ * Defines all string keys used for:
+ * - Command-line argument parsing
+ * - CBOR serialization/deserialization
+ * - Configuration parameter names
+ * 
+ * These constants ensure consistent string usage across the codebase.
+ */
+
 #ifndef CONSTSTRINGS_HPP
 #define CONSTSTRINGS_HPP
 #include <QString>
