@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <QBuffer>
 #include <QBitArray>
+#include <cctype>
 extern "C" {
 #include <svgtiny.h>
 }
@@ -314,14 +315,9 @@ void SdfGenerationContext::processBitmapGlyph(StoredCharacter& output, FT_GlyphS
 {
 	auto error = FT_Render_Glyph( glyphSlot, FT_RENDER_MODE_NORMAL);
 	if ( error ) {
-		output.valid = false;
+		output.valid = false; // Will be removed after the fact.
 		return;
 	}
-	if(glyphSlot->bitmap.rows <= 1 || glyphSlot->bitmap.width <= 1) {
-		output.valid = false;
-		return;
-	}
-	output.valid = true;
 
 	const unsigned padding = args.padding;
 	output.width = glyphSlot->bitmap.width;
@@ -339,6 +335,12 @@ void SdfGenerationContext::processBitmapGlyph(StoredCharacter& output, FT_GlyphS
 	output.vertBearingX = convert26_6ToDouble(glyphSlot->metrics.vertBearingX);
 	output.vertBearingY = convert26_6ToDouble(glyphSlot->metrics.vertBearingY);
 	output.vertAdvance = convert26_6ToDouble(glyphSlot->metrics.vertAdvance);
+
+	if( glyphSlot->bitmap.rows <= 1 || glyphSlot->bitmap.width <= 1 ) {
+		output.valid = true; // Technically valid, but will be empty.
+		return;
+	}
+	output.valid = true;
 
 	QBuffer buff(&output.sdf);
 	QImage oldImg = FTBitmap2QImage(glyphSlot->bitmap, args.internalProcessSize - (args.padding*2), args.internalProcessSize - (args.padding*2));
@@ -405,8 +407,6 @@ void SdfGenerationContext::processFont(PreprocessedFontFace& output, const SDFGe
 	for(uint32_t charcode = minChar; charcode < maxChar; ++charcode) {
 		auto glyph_index = FT_Get_Char_Index( face, charcode );
 		if(glyph_index) {
-			charcodeToGlyphIndex.insert(charcode,glyph_index);
-			glyphIndexToCharCode.insert(glyph_index,charcode);
 			error = FT_Load_Glyph(face,glyph_index,FT_LOAD_NO_BITMAP);
 			if ( error ) throw std::runtime_error("Failed to load glyph.");
 			StoredCharacter strdChr{};
@@ -415,9 +415,15 @@ void SdfGenerationContext::processFont(PreprocessedFontFace& output, const SDFGe
 			} else {
 				processBitmapGlyph(strdChr,face->glyph, args);
 			}
-			output.storedCharacters.insert(charcode, strdChr);
+			if(strdChr.valid) {
+				output.storedCharacters.insert(charcode, strdChr);
+				charcodeToGlyphIndex.insert(charcode,glyph_index);
+				glyphIndexToCharCode.insert(glyph_index,charcode);
+			}
 		}
 	}
+
+
 	if( FT_HAS_KERNING(face) )
 	{
 		FT_Vector kernVector;
@@ -435,7 +441,6 @@ void SdfGenerationContext::processFont(PreprocessedFontFace& output, const SDFGe
 			if(tmpKern.size()) output.kerning.insert(it.key(),tmpKern);
 		}
 	}
-
 	FT_Done_Face(face);
 }
 

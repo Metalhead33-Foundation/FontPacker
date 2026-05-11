@@ -432,12 +432,12 @@ void FontOutlineDecompositionContext::normalizeContour(std::vector<EdgeSegment>&
 
 std::span<EdgeSegment> FontOutlineDecompositionContext::getEdgeSegmentsForContour(const ContourDefinition& contour)
 {
-	return std::span<EdgeSegment>(&edges[contour.first], &edges[contour.second+1]);
+	return std::span<EdgeSegment>(&edges[std::max(contour.first,0)], &edges[std::min(contour.second+1,static_cast<int>(edges.size()-1))]);
 }
 
 std::span<const EdgeSegment> FontOutlineDecompositionContext::getEdgeSegmentsForContour(const ContourDefinition& contour) const
 {
-	return std::span<const EdgeSegment>(&edges[contour.first], &edges[contour.second+1]);
+	return std::span<const EdgeSegment>(&edges[std::max(contour.first,0)], &edges[std::min(contour.second+1,static_cast<int>(edges.size()-1))]);
 }
 
 FontOutlineDecompositionContext::ContourVector FontOutlineDecompositionContext::produceContourVecetor() const
@@ -563,6 +563,7 @@ void FontOutlineDecompositionContext::makeShapeIdsSigend(bool flip)
 	auto contourLimits = produceContourMap();
 	for( auto it = std::begin(contourLimits) ; it != std::end(contourLimits) ; ++it ) {
 		std::span<EdgeSegment> segment = getEdgeSegmentsForContour(it->second);
+		if(segment.empty()) continue;
 		float area = computeSignedArea(segment);
 		bool isCW = area > 0.0f;
 		/*int orientations[3] = { 0, 0, 0 };
