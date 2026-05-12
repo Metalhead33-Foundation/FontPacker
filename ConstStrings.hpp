@@ -70,7 +70,7 @@ extern const QString FACE_HEIGHT_KEY;
 extern const QString MAX_ADVANCE_KEY;
 extern const QString UNITS_PER_EM_KEY;
 extern const QString KERNING_KEY;
-extern const QString JPEG_KEY;
+extern const QString IMAGE_FORMAT_KEY;
 extern const QString FORCE_RASTER_KEY;
 extern const QString GAMMA_CORRECT_KEY;
 extern const QString MIDPOINT_ADJUSTMENT_KEY;

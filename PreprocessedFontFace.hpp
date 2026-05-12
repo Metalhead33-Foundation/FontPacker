@@ -5,7 +5,9 @@
 
 #ifndef PREPROCESSEDFONTFACE_HPP
 #define PREPROCESSEDFONTFACE_HPP
+#include <array>
 #include <cstdint>
+#include <QByteArray>
 #include <QString>
 #include <QCborMap>
 #include "SDFGenerationArguments.hpp"
@@ -78,7 +80,7 @@ struct PreprocessedFontFace {
 	uint32_t bitmap_logical_size;              ///< Logical/intended bitmap size in pixels
 	uint32_t bitmap_padding;                  ///< Padding around glyphs in pixels
 	bool hasVert;                              ///< Whether vertical layout metrics are available
-	bool jpeg;                                 ///< Whether SDF bitmap data is JPEG compressed
+	std::array<char,8> imageFormat{{'P','N','G','\0','\0','\0','\0','\0'}}; ///< Null-terminated encoded glyph image format
 	float ascender = 0.0f;                     ///< Scaled face ascender in pixels
 	float descender = 0.0f;                    ///< Scaled face descender in pixels (usually negative)
 	float faceHeight = 0.0f;                   ///< Scaled baseline-to-baseline distance in pixels
@@ -118,6 +120,18 @@ struct PreprocessedFontFace {
 	 * @see BINARY_FORMAT.md for format specification.
 	 */
 	void fromData(QDataStream& dataStream);
+
+	/**
+	 * @brief Set the null-terminated encoded glyph image format.
+	 * @param format Image format name accepted by QImageWriter (e.g. PNG, JPG, WEBP).
+	 */
+	void setImageFormat(const QByteArray& format);
+
+	/**
+	 * @brief Get the encoded glyph image format as a null-terminated byte array.
+	 * @return Image format name accepted by QImageWriter.
+	 */
+	QByteArray imageFormatBytes() const;
 	
 	/**
 	 * @brief Export glyph SDF data to individual files.

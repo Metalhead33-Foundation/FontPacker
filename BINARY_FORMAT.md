@@ -20,6 +20,8 @@ The binary format consists of a single `PreprocessedFontFace` structure that con
   - `bool`: 1 byte (0x00 = false, 0x01 = true)
 - **Strings**: 
   - UTF-8 encoded byte arrays with length prefix
+- **Fixed strings**:
+  - `char[8]`: Null-terminated ASCII string, padded with zeros
 
 ## File Structure
 
@@ -50,14 +52,14 @@ Offset  Field                    Type        Description
 4+N+6   bitmap_logical_size     uint32_t    Logical bitmap size
 4+N+10  bitmap_padding          uint32_t    Bitmap padding in pixels
 4+N+14  hasVert                 bool        Whether vertical layout is supported
-4+N+15  jpeg                    bool        Whether SDF data is JPEG compressed
-4+N+16  ascender                float       Scaled face ascender in pixels
-4+N+20  descender               float       Scaled face descender in pixels
-4+N+24  faceHeight              float       Scaled baseline-to-baseline distance in pixels
-4+N+28  maxAdvance              float       Scaled maximum advance in pixels
-4+N+32  unitsPerEm              uint32_t    Original font units per EM
-4+N+36  charCount               uint32_t    Number of glyphs stored
-4+N+40  glyphTOC                GlyphTOC[]  Table of contents for glyphs (charCount entries)
+4+N+15  imageFormat             char[8]     Null-terminated glyph image format (e.g. PNG)
+4+N+23  ascender                float       Scaled face ascender in pixels
+4+N+27  descender               float       Scaled face descender in pixels
+4+N+31  faceHeight              float       Scaled baseline-to-baseline distance in pixels
+4+N+35  maxAdvance              float       Scaled maximum advance in pixels
+4+N+39  unitsPerEm              uint32_t    Original font units per EM
+4+N+43  charCount               uint32_t    Number of glyphs stored
+4+N+47  glyphTOC                GlyphTOC[]  Table of contents for glyphs (charCount entries)
 ...     kerning                 KerningMap  Kerning information
 ...     glyphData                Glyph[]    Glyph data stored at offsets from TOC
 ```
@@ -164,7 +166,7 @@ If `valid == false`, only the boolean is written (1 byte). If `valid == true`, a
    - `bitmap_logical_size` (uint32_t, 4 bytes)
    - `bitmap_padding` (uint32_t, 4 bytes)
    - `hasVert` (bool, 1 byte)
-   - `jpeg` (bool, 1 byte)
+   - `imageFormat` (char[8], 8 bytes, null-terminated)
    - `ascender` (float, 4 bytes)
    - `descender` (float, 4 bytes)
    - `faceHeight` (float, 4 bytes)
@@ -235,7 +237,7 @@ def read_font_file(file):
     bitmap_logical_size = read_uint32_be(file)
     bitmap_padding = read_uint32_be(file)
     has_vert = read_bool(file)
-    jpeg = read_bool(file)
+    image_format = read_bytes(file, 8).split(b'\0', 1)[0].decode('ascii')
     ascender = read_float_be(file)
     descender = read_float_be(file)
     face_height = read_float_be(file)
@@ -311,7 +313,7 @@ def read_stored_character(file):
 - All multi-byte integers and floats are in **Big-Endian** byte order
 - The TOC allows for efficient random access to glyphs without reading the entire file
 - Glyph data is stored at variable offsets, so the file must support seeking
-- The SDF bitmap data format depends on the `jpeg` flag and `type` field
+- The SDF bitmap data format depends on the `imageFormat` field and `type` field
 - Empty glyphs (invalid) are stored as a single boolean `false` value
 - The kerning map structure allows for sparse storage of kerning pairs
 

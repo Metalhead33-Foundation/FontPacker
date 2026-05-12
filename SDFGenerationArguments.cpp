@@ -9,6 +9,7 @@ const unsigned INTERNAL_RENDER_SIZE = 1024;
 const unsigned PADDING = 100;
 #endif
 const unsigned INTENDED_SIZE = 32;
+const QString DEFAULT_IMAGE_FORMAT = QStringLiteral("PNG");
 
 /*
 extern const QString GAMMA_CORRECT_KEY;
@@ -20,7 +21,8 @@ void SDFGenerationArguments::fromArgs(const QVariantMap& args)
 {
 	this->msdfgenColouring = args.contains(MSDFGEN_COLOURING);
 	this->invert = args.contains(INVERT_KEY);
-	this->jpeg = args.contains(JPEG_KEY);
+	this->imageFormat = args.value(IMAGE_FORMAT_KEY, DEFAULT_IMAGE_FORMAT).toString().trimmed().toUpper().toLatin1();
+	if(this->imageFormat.isEmpty()) this->imageFormat = DEFAULT_IMAGE_FORMAT.toLatin1();
 	this->forceRaster = args.contains(FORCE_RASTER_KEY);
 	this->gammaCorrect = args.contains(GAMMA_CORRECT_KEY);
 	this->maximizeInsteadOfAverage = args.contains(MAXIMIZE_INSTEAD_OF_AVERAGE_KEY);

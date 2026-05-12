@@ -263,7 +263,7 @@ void SdfGenerationContext::processOutlineGlyphEnd(StoredCharacter& output, const
 	}
 	if( args.type == SDFType::MSDF ) img = img.convertToFormat( QImage::Format_RGB888 );
 	buff.open(QIODevice::WriteOnly);
-	if(!img.save(&buff, args.jpeg ? "JPG" : "PNG",-1)) throw std::runtime_error("Failed to save image!");
+	if(!img.save(&buff, args.imageFormat.constData(),-1)) throw std::runtime_error("Failed to save image!");
 	buff.close();
 }
 
@@ -363,7 +363,7 @@ void SdfGenerationContext::processBitmapGlyph(StoredCharacter& output, FT_GlyphS
 			if(img.width() != args.intendedSize) img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
 	}
 	buff.open(QIODevice::WriteOnly);
-	if(!img.save(&buff, args.jpeg ? "JPG" : "PNG",-1)) throw std::runtime_error("Failed to save image!");
+	if(!img.save(&buff, args.imageFormat.constData(),-1)) throw std::runtime_error("Failed to save image!");
 	buff.close();
 }
 
@@ -374,7 +374,7 @@ void SdfGenerationContext::processFont(PreprocessedFontFace& output, const SDFGe
 	output.bitmap_size = args.intendedSize;
 	output.bitmap_logical_size = args.internalProcessSize;
 	output.bitmap_padding = args.padding;
-	output.jpeg = args.jpeg;
+	output.setImageFormat(args.imageFormat);
 	unsigned to_scale = args.internalProcessSize - args.padding;
 	FT_Face face;
 	auto fpath = args.font_path.toStdString();
@@ -467,7 +467,7 @@ void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteA
 	output.bitmap_size = args.intendedSize;
 	output.bitmap_logical_size = args.internalProcessSize;
 	output.bitmap_padding = args.padding;
-	output.jpeg = args.jpeg;
+	output.setImageFormat(args.imageFormat);
 	output.hasVert = false;
 	output.fontFamilyName = QStringLiteral("SVG");
 	output.ascender = diagram->height;

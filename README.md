@@ -129,7 +129,6 @@ These options are boolean flags (presence enables the option):
 
 | Argument | Description |
 |----------|-------------|
-| `--jpeg` | Compress SDF bitmap data as JPEG |
 | `--forceraster` | Force rasterization instead of vector processing |
 | `--invert` | Invert the SDF (inside becomes outside) |
 | `--gammacorrect` | Apply gamma correction |
@@ -138,13 +137,20 @@ These options are boolean flags (presence enables the option):
 
 **Examples:**
 ```bash
---jpeg
 --forceraster
 --invert
 --gammacorrect
 --maximizeinsteadofaverage
 --msdfgencoloring
 ```
+
+### Image Format
+
+| Argument | Type | Description | Default |
+|----------|------|-------------|---------|
+| `--format <name>` | String | Encoded glyph image format passed to `QImage::save` | `PNG` |
+
+The format name is stored in the font face as an 8-byte null-terminated field. Examples include `PNG`, `JPG`, `WEBP`, and any other image writer format available to Qt at runtime.
 
 ### Advanced Options
 
@@ -200,7 +206,7 @@ fontpacker --nogui --inbin font.bin --outfont glyphs/glyph_%1.png
 #### Load and save with processing:
 ```bash
 fontpacker --nogui --inbin input.bin \
-  --jpeg --gammacorrect \
+  --format JPG --gammacorrect \
   --outbin output.bin
 ```
 

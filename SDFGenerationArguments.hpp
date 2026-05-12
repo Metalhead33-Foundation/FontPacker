@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <memory>
 #include <QVariant>
+#include <QByteArray>
 #include <optional>
 
 /**
@@ -70,7 +71,7 @@ struct SDFGenerationArguments {
 	uint32_t char_max;                            ///< Maximum Unicode code point to process
 	bool msdfgenColouring;                        ///< Use msdfgen-style edge coloring algorithm
 	bool invert;                                  ///< Invert the SDF (inside becomes outside)
-	bool jpeg;                                    ///< Compress SDF data as JPEG
+	QByteArray imageFormat;                      ///< Encoded glyph image format (PNG, JPG, WEBP, ...)
 	bool forceRaster;                             ///< Force rasterization instead of vector processing
 	bool gammaCorrect;                            ///< Apply gamma correction
 	bool maximizeInsteadOfAverage;                ///< Use maximum instead of average when downsampling

@@ -20,6 +20,7 @@
 #include <QImage>
 #include <QFile>
 #include <QBuffer>
+#include <algorithm>
 #include <cstring>
 #include <cstdlib>
 #include <vector>
@@ -36,7 +37,7 @@ void PreprocessedFontFace::toCbor(QCborMap& cbor) const
 	cbor.insert(BITMAP_LOGICAL_SIZE_KEY, bitmap_logical_size);
 	cbor.insert(PADDING_KEY, bitmap_padding);
 	cbor.insert(HAS_VERT_KEY, hasVert);
-	cbor.insert(JPEG_KEY, jpeg);
+	cbor.insert(IMAGE_FORMAT_KEY, QString::fromLatin1(imageFormatBytes()));
 	cbor.insert(ASCENDER_KEY, ascender);
 	cbor.insert(DESCENDER_KEY, descender);
 	cbor.insert(FACE_HEIGHT_KEY, faceHeight);
@@ -77,7 +78,7 @@ void PreprocessedFontFace::fromCbor(const QCborMap& cbor)
 	this->bitmap_logical_size = cbor[BITMAP_LOGICAL_SIZE_KEY].toInteger();
 	this->bitmap_padding = cbor[PADDING_KEY].toInteger();
 	this->hasVert = cbor[HAS_VERT_KEY].toBool();
-	this->jpeg = cbor[JPEG_KEY].toBool();
+	setImageFormat(cbor[IMAGE_FORMAT_KEY].toString(QStringLiteral("PNG")).toLatin1());
 	this->ascender = cbor[ASCENDER_KEY].toDouble();
 	this->descender = cbor[DESCENDER_KEY].toDouble();
 	this->faceHeight = cbor[FACE_HEIGHT_KEY].toDouble();
@@ -108,8 +109,9 @@ void PreprocessedFontFace::toData(QDataStream& dataStream) const
 	QByteArray utf8str = this->fontFamilyName.toUtf8();
 	dataStream << static_cast<uint32_t>(utf8str.size());
 	dataStream.writeRawData(utf8str.data(),utf8str.length());
-	dataStream << static_cast<uint8_t>(type) << static_cast<uint8_t>(distType) << bitmap_size << bitmap_logical_size << bitmap_padding << hasVert
-			   << jpeg << ascender << descender << faceHeight << maxAdvance << unitsPerEm << static_cast<uint32_t>(storedCharacters.size());
+	dataStream << static_cast<uint8_t>(type) << static_cast<uint8_t>(distType) << bitmap_size << bitmap_logical_size << bitmap_padding << hasVert;
+	dataStream.writeRawData(imageFormat.data(), imageFormat.size());
+	dataStream << ascender << descender << faceHeight << maxAdvance << unitsPerEm << static_cast<uint32_t>(storedCharacters.size());
 	// Write table of contents
 	QMap<uint32_t,uint32_t> offsets;
 	auto currOffset = dataStream.device()->pos();
@@ -139,8 +141,10 @@ void PreprocessedFontFace::fromData(QDataStream& dataStream)
 	}
 	uint8_t tmpType, tmpDist;
 	uint32_t charCount;
-	dataStream >> tmpType >> tmpDist >> bitmap_size >> bitmap_logical_size >> bitmap_padding >> hasVert >> jpeg
-			   >> ascender >> descender >> faceHeight >> maxAdvance >> unitsPerEm >> charCount;
+	dataStream >> tmpType >> tmpDist >> bitmap_size >> bitmap_logical_size >> bitmap_padding >> hasVert;
+	dataStream.readRawData(imageFormat.data(), imageFormat.size());
+	imageFormat.back() = '\0';
+	dataStream >> ascender >> descender >> faceHeight >> maxAdvance >> unitsPerEm >> charCount;
 	this->type = static_cast<SDFType>(tmpType);
 	this->distType = static_cast<DistanceType>(tmpDist);
 	QMap<uint32_t,uint32_t> offsets;
@@ -156,6 +160,21 @@ void PreprocessedFontFace::fromData(QDataStream& dataStream)
 		tmpChar.fromData(dataStream);
 		storedCharacters.insert(it.key(),tmpChar);
 	}
+}
+
+void PreprocessedFontFace::setImageFormat(const QByteArray& format)
+{
+	imageFormat.fill('\0');
+	QByteArray normalized = format.trimmed().toUpper();
+	if(normalized.isEmpty()) normalized = QByteArrayLiteral("PNG");
+	const qsizetype bytesToCopy = std::min<qsizetype>(normalized.size(), static_cast<qsizetype>(imageFormat.size() - 1));
+	std::copy_n(normalized.constData(), bytesToCopy, imageFormat.data());
+}
+
+QByteArray PreprocessedFontFace::imageFormatBytes() const
+{
+	const auto terminator = std::find(imageFormat.begin(), imageFormat.end(), '\0');
+	return QByteArray(imageFormat.data(), std::distance(imageFormat.begin(), terminator));
 }
 
 void PreprocessedFontFace::outToFolder(const QString& pattern) const
