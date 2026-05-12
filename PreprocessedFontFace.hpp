@@ -79,6 +79,11 @@ struct PreprocessedFontFace {
 	uint32_t bitmap_padding;                  ///< Padding around glyphs in pixels
 	bool hasVert;                              ///< Whether vertical layout metrics are available
 	bool jpeg;                                 ///< Whether SDF bitmap data is JPEG compressed
+	float ascender = 0.0f;                     ///< Scaled face ascender in pixels
+	float descender = 0.0f;                    ///< Scaled face descender in pixels (usually negative)
+	float faceHeight = 0.0f;                   ///< Scaled baseline-to-baseline distance in pixels
+	float maxAdvance = 0.0f;                   ///< Scaled maximum advance in pixels
+	uint32_t unitsPerEm = 0;                   ///< Original font units per EM
 	KerningMap kerning;                        ///< Kerning information for character pairs
 	QMap<uint32_t,StoredCharacter> storedCharacters; ///< Map of Unicode code points to glyph data
 	

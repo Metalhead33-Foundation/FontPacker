@@ -51,8 +51,13 @@ Offset  Field                    Type        Description
 4+N+10  bitmap_padding          uint32_t    Bitmap padding in pixels
 4+N+14  hasVert                 bool        Whether vertical layout is supported
 4+N+15  jpeg                    bool        Whether SDF data is JPEG compressed
-4+N+16  charCount               uint32_t    Number of glyphs stored
-4+N+20  glyphTOC                GlyphTOC[]  Table of contents for glyphs (charCount entries)
+4+N+16  ascender                float       Scaled face ascender in pixels
+4+N+20  descender               float       Scaled face descender in pixels
+4+N+24  faceHeight              float       Scaled baseline-to-baseline distance in pixels
+4+N+28  maxAdvance              float       Scaled maximum advance in pixels
+4+N+32  unitsPerEm              uint32_t    Original font units per EM
+4+N+36  charCount               uint32_t    Number of glyphs stored
+4+N+40  glyphTOC                GlyphTOC[]  Table of contents for glyphs (charCount entries)
 ...     kerning                 KerningMap  Kerning information
 ...     glyphData                Glyph[]    Glyph data stored at offsets from TOC
 ```
@@ -160,6 +165,11 @@ If `valid == false`, only the boolean is written (1 byte). If `valid == true`, a
    - `bitmap_padding` (uint32_t, 4 bytes)
    - `hasVert` (bool, 1 byte)
    - `jpeg` (bool, 1 byte)
+   - `ascender` (float, 4 bytes)
+   - `descender` (float, 4 bytes)
+   - `faceHeight` (float, 4 bytes)
+   - `maxAdvance` (float, 4 bytes)
+   - `unitsPerEm` (uint32_t, 4 bytes)
    - `charCount` (uint32_t, 4 bytes)
 4. Read glyph TOC: `charCount` entries, each containing:
    - `codePoint` (uint32_t, 4 bytes)
@@ -188,7 +198,7 @@ If `valid == false`, only the boolean is written (1 byte). If `valid == true`, a
    - Convert to UTF-8
    - Write length (uint32_t)
    - Write UTF-8 bytes
-2. Write font metadata (type, distType, sizes, flags, charCount)
+2. Write font metadata (type, distType, sizes, flags, face metrics, charCount)
 3. Reserve space for TOC:
    - Record current position
    - Write `charCount` placeholder entries (all zeros, 8 bytes each)
@@ -226,6 +236,11 @@ def read_font_file(file):
     bitmap_padding = read_uint32_be(file)
     has_vert = read_bool(file)
     jpeg = read_bool(file)
+    ascender = read_float_be(file)
+    descender = read_float_be(file)
+    face_height = read_float_be(file)
+    max_advance = read_float_be(file)
+    units_per_em = read_uint32_be(file)
     char_count = read_uint32_be(file)
     
     # Read TOC

@@ -393,6 +393,11 @@ void SdfGenerationContext::processFont(PreprocessedFontFace& output, const SDFGe
 	if ( error ) {
 		throw std::runtime_error("Failed to set character sizes.");
 	}
+	output.ascender = convert26_6ToDouble(face->size->metrics.ascender);
+	output.descender = convert26_6ToDouble(face->size->metrics.descender);
+	output.faceHeight = convert26_6ToDouble(face->size->metrics.height);
+	output.maxAdvance = convert26_6ToDouble(face->size->metrics.max_advance);
+	output.unitsPerEm = face->units_per_EM;
 	FT_Set_Transform(face,nullptr,nullptr);
 	if ( error ) {
 		throw std::runtime_error("Failed to set transform.");
@@ -465,6 +470,11 @@ void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteA
 	output.jpeg = args.jpeg;
 	output.hasVert = false;
 	output.fontFamilyName = QStringLiteral("SVG");
+	output.ascender = diagram->height;
+	output.descender = 0.0f;
+	output.faceHeight = diagram->height;
+	output.maxAdvance = diagram->width;
+	output.unitsPerEm = diagram->height;
 	switch (args.svgTreatment) {
 		case SeparateShapes: {
 			bool isFirstShape = true;

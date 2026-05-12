@@ -37,6 +37,11 @@ void PreprocessedFontFace::toCbor(QCborMap& cbor) const
 	cbor.insert(PADDING_KEY, bitmap_padding);
 	cbor.insert(HAS_VERT_KEY, hasVert);
 	cbor.insert(JPEG_KEY, jpeg);
+	cbor.insert(ASCENDER_KEY, ascender);
+	cbor.insert(DESCENDER_KEY, descender);
+	cbor.insert(FACE_HEIGHT_KEY, faceHeight);
+	cbor.insert(MAX_ADVANCE_KEY, maxAdvance);
+	cbor.insert(UNITS_PER_EM_KEY, unitsPerEm);
 	QCborMap tmpMap;
 	for(auto it = std::begin(storedCharacters); it != std::end(storedCharacters); ++it) {
 		tmpMap.insert(it.key(),it.value().toCbor());
@@ -73,6 +78,11 @@ void PreprocessedFontFace::fromCbor(const QCborMap& cbor)
 	this->bitmap_padding = cbor[PADDING_KEY].toInteger();
 	this->hasVert = cbor[HAS_VERT_KEY].toBool();
 	this->jpeg = cbor[JPEG_KEY].toBool();
+	this->ascender = cbor[ASCENDER_KEY].toDouble();
+	this->descender = cbor[DESCENDER_KEY].toDouble();
+	this->faceHeight = cbor[FACE_HEIGHT_KEY].toDouble();
+	this->maxAdvance = cbor[MAX_ADVANCE_KEY].toDouble();
+	this->unitsPerEm = cbor[UNITS_PER_EM_KEY].toInteger();
 	QCborMap tmpMap = cbor[GLYPHS_KEY].toMap();
 	for(auto it = std::begin(tmpMap); it != std::end(tmpMap); ++it) {
 		unsigned charCode = it.key().toInteger();
@@ -99,7 +109,7 @@ void PreprocessedFontFace::toData(QDataStream& dataStream) const
 	dataStream << static_cast<uint32_t>(utf8str.size());
 	dataStream.writeRawData(utf8str.data(),utf8str.length());
 	dataStream << static_cast<uint8_t>(type) << static_cast<uint8_t>(distType) << bitmap_size << bitmap_logical_size << bitmap_padding << hasVert
-			   << jpeg << static_cast<uint32_t>(storedCharacters.size());
+			   << jpeg << ascender << descender << faceHeight << maxAdvance << unitsPerEm << static_cast<uint32_t>(storedCharacters.size());
 	// Write table of contents
 	QMap<uint32_t,uint32_t> offsets;
 	auto currOffset = dataStream.device()->pos();
@@ -129,7 +139,8 @@ void PreprocessedFontFace::fromData(QDataStream& dataStream)
 	}
 	uint8_t tmpType, tmpDist;
 	uint32_t charCount;
-	dataStream >> tmpType >> tmpDist >> bitmap_size >> bitmap_logical_size >> bitmap_padding >> hasVert >> jpeg >> charCount;
+	dataStream >> tmpType >> tmpDist >> bitmap_size >> bitmap_logical_size >> bitmap_padding >> hasVert >> jpeg
+			   >> ascender >> descender >> faceHeight >> maxAdvance >> unitsPerEm >> charCount;
 	this->type = static_cast<SDFType>(tmpType);
 	this->distType = static_cast<DistanceType>(tmpDist);
 	QMap<uint32_t,uint32_t> offsets;
