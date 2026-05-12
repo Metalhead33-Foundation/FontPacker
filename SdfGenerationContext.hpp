@@ -124,7 +124,7 @@ public:
 	void processSvg(PreprocessedFontFace& output, const QByteArray& buff, const SDFGenerationArguments& args);
 
 	/**
-	 * @brief Process an SVG file and generate glyphs.
+	 * @brief Process an SVG file and generate a stored vector image.
 	 * @param output Preprocessed vector image to populate.
 	 * @param buff SVG file data.
 	 * @param args Generation arguments.
@@ -141,7 +141,7 @@ public:
 	void processSvgShape(StoredCharacter& output, const svgtiny_shape& shape, const SDFGenerationArguments& args, bool isFirstShape = false);
 
 	/**
-	 * @brief Process a single SVG shape into a glyph.
+	 * @brief Process a single SVG shape into a stored vector image.
 	 * @param output Output vector image structure to populate.
 	 * @param shape SVG shape to process.
 	 * @param args Generation arguments.
@@ -158,7 +158,7 @@ public:
 	void processSvgShapes(StoredCharacter& output, const std::span<const svgtiny_shape>& shapes, const SDFGenerationArguments& args);
 
 	/**
-	 * @brief Process multiple SVG shapes into a single glyph.
+	 * @brief Process multiple SVG shapes into a stored vector image.
 	 * @param output Output vector image structure to populate.
 	 * @param shapes Span of SVG shapes to process.
 	 * @param args Generation arguments.

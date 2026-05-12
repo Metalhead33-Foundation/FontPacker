@@ -32,6 +32,8 @@ Specify one input source:
 | `--insvg <path>` | Load SVG file | `--insvg /path/to/shapes.svg` |
 | `--inbin <path>` | Load preprocessed font from binary format | `--inbin font.bin` |
 | `--incbor <path>` | Load preprocessed font from CBOR format | `--incbor font.cbor` |
+| `--invectorbin <path>` | Load stored vector image from binary format | `--invectorbin image.vbin` |
+| `--invectorcbor <path>` | Load stored vector image from CBOR format | `--invectorcbor image.vcbor` |
 
 **Note**: If no input is specified and `nogui` is used, the application will exit.
 
@@ -44,6 +46,8 @@ Specify one or more output destinations:
 | `--outbin <path>` | Save preprocessed font in binary format | `--outbin output.bin` |
 | `--outcbor <path>` | Save preprocessed font in CBOR format | `--outcbor output.cbor` |
 | `--outfont <pattern>` | Export individual glyph SDF files | `--outfont glyph_%1.bin` |
+| `--outvectorbin <path>` | Save stored vector image in binary format | `--outvectorbin image.vbin` |
+| `--outvectorcbor <path>` | Save stored vector image in CBOR format | `--outvectorcbor image.vcbor` |
 
 The `--outfont` pattern uses `%1` as a placeholder for the Unicode code point.
 
@@ -134,6 +138,7 @@ These options are boolean flags (presence enables the option):
 | `--gammacorrect` | Apply gamma correction |
 | `--maximizeinsteadofaverage` | Use maximum instead of average when downsampling |
 | `--msdfgencoloring` | Use msdfgen-style edge coloring algorithm for MSDF |
+| `--createmipmaps` | Store all generated mip levels for standalone vector image output |
 
 **Examples:**
 ```bash
@@ -142,6 +147,7 @@ These options are boolean flags (presence enables the option):
 --gammacorrect
 --maximizeinsteadofaverage
 --msdfgencoloring
+--createmipmaps
 ```
 
 ### Image Format
@@ -191,6 +197,17 @@ fontpacker --nogui --insvg shapes.svg \
   --outbin shapes_sdf.bin
 ```
 
+#### Generate a standalone vector image from SVG:
+```bash
+fontpacker --nogui --insvg icon.svg \
+  --type SDF --mode OpenGL \
+  --internalprocesssize 1024 --intendedsize 128 \
+  --padding 100 --createmipmaps \
+  --outvectorbin icon_sdf.vbin
+```
+
+When `--insvg` is combined with `--outbin` or `--outcbor`, the SVG is stored through the font-face path. When it is combined with `--outvectorbin` or `--outvectorcbor`, it is stored as a standalone `StoredVectorImage`.
+
 #### Convert between formats:
 ```bash
 # Binary to CBOR
@@ -198,6 +215,9 @@ fontpacker --nogui --inbin font.bin --outcbor font.cbor
 
 # CBOR to Binary
 fontpacker --nogui --incbor font.cbor --outbin font.bin
+
+# Stored vector image binary to CBOR
+fontpacker --nogui --invectorbin image.vbin --outvectorcbor image.vcbor
 
 # Export individual glyphs
 fontpacker --nogui --inbin font.bin --outfont glyphs/glyph_%1.png

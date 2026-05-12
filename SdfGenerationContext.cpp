@@ -18,6 +18,7 @@
 #include <QBuffer>
 #include <QBitArray>
 #include <cctype>
+#include <algorithm>
 extern "C" {
 #include <svgtiny.h>
 }
@@ -52,6 +53,73 @@ static uint32_t nextPowerOf2(uint32_t n) {
 	int k = 31 - __builtin_clz(n);  // Highest bit position
 	if (n & (n - 1)) return 1U << (k + 1);  // Not a power of 2, shift up
 	return 1U << k;  // Already a power of 2
+}
+
+using SvgDiagramPtr = std::unique_ptr<svgtiny_diagram, decltype(&svgtiny_free)>;
+
+static SvgDiagramPtr parseSvgDiagram(const QByteArray& buff)
+{
+	SvgDiagramPtr diagram(svgtiny_create(), svgtiny_free);
+	if(!diagram) throw std::runtime_error("Failed to allocate SVG parser.");
+	svgtiny_code code = svgtiny_parse(diagram.get(), buff.data(), buff.size(), "file:///tmp/FontPacker.svg", -1, -1);
+	switch(code) {
+		case svgtiny_OK: break;
+		case svgtiny_OUT_OF_MEMORY: throw std::runtime_error("Out of memory!");
+		case svgtiny_LIBDOM_ERROR: throw std::runtime_error("LibDOM error!");
+		case svgtiny_NOT_SVG: throw std::runtime_error("This is not an SVG!");
+		case svgtiny_SVG_ERROR: throw std::runtime_error("SVG error!");
+		default: throw std::runtime_error("Unknown SVG parser error!");
+	}
+	return diagram;
+}
+
+static QImage downsampleImageForArgs(const QImage& img, const SDFGenerationArguments& args)
+{
+	return args.maximizeInsteadOfAverage
+			   ? SdfGenerationContext::dowsanmpleImageByMaxing(img)
+			   : SdfGenerationContext::downsampleImageByAveraging(img);
+}
+
+static void downsampleToIntendedSize(QImage& img, const SDFGenerationArguments& args)
+{
+	if(!args.intendedSize) return;
+	if(!args.internalProcessSize) throw std::runtime_error("Internal processing size must be greater than zero.");
+	const unsigned powerOfTwoTarget = nextPowerOf2(args.intendedSize);
+	const int steps = std::max(0, __builtin_clz(powerOfTwoTarget) - __builtin_clz(args.internalProcessSize));
+	for(int i = 0; i < steps; ++i) {
+		img = downsampleImageForArgs(img, args);
+	}
+	if(img.width() != static_cast<int>(args.intendedSize)) {
+		img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+	}
+}
+
+static QByteArray encodeSdfImage(QImage img, const SDFGenerationArguments& args)
+{
+	if(args.type == SDFType::MSDF) img = img.convertToFormat(QImage::Format_RGB888);
+	QByteArray bytes;
+	QBuffer buff(&bytes);
+	buff.open(QIODevice::WriteOnly);
+	if(!img.save(&buff, args.imageFormat.constData(), -1)) throw std::runtime_error("Failed to save image!");
+	buff.close();
+	return bytes;
+}
+
+static float effectiveDistanceRange(uint32_t samplesToCheck, const SDFGenerationArguments& args, uint32_t actualSize)
+{
+	const float processingRange = static_cast<float>(samplesToCheck ? samplesToCheck / 2 : args.padding);
+	if(!args.internalProcessSize) return processingRange;
+	return processingRange * (static_cast<float>(actualSize) / static_cast<float>(args.internalProcessSize));
+}
+
+static uint32_t vectorEncodingFlags(const SDFGenerationArguments& args)
+{
+	uint32_t flags = 0;
+	if(args.invert) flags |= StoredVectorImage::EncodingInverted;
+	if(args.gammaCorrect) flags |= StoredVectorImage::EncodingGammaCorrected;
+	if(args.maximizeInsteadOfAverage) flags |= StoredVectorImage::EncodingMaximizedDownsample;
+	if(args.midpointAdjustment.has_value()) flags |= StoredVectorImage::EncodingHasMidpointAdjustment;
+	return flags;
 }
 
 double SdfGenerationContext::convert26_6ToDouble(int32_t fixedPointValue) {
@@ -243,80 +311,38 @@ void SdfGenerationContext::processOutlineGlyphEnd(StoredCharacter& output, const
 	if(args.msdfgenColouring) decompositionContext.assignColoursMsdfgen();
 	else decompositionContext.assignColours();
 
-	QBuffer buff(&output.sdf);
 	QImage img = produceOutlineSdf(decompositionContext, args);
 
-	if(args.intendedSize) {
-		unsigned integerScale = args.internalProcessSize / args.intendedSize;
-		unsigned powerOfTwoTargeet = nextPowerOf2(args.intendedSize);
-		int steps = __builtin_clz(powerOfTwoTargeet) - __builtin_clz(args.internalProcessSize);
-		if(args.maximizeInsteadOfAverage) {
-			for(int i = 0; i < steps; ++i) {
-				img = dowsanmpleImageByMaxing(img);
-			}
-		} else {
-			for(int i = 0; i < steps; ++i) {
-				img = downsampleImageByAveraging(img);
-			}
-		}
-		if(img.width() != args.intendedSize) img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-	}
-	if( args.type == SDFType::MSDF ) img = img.convertToFormat( QImage::Format_RGB888 );
-	buff.open(QIODevice::WriteOnly);
-	if(!img.save(&buff, args.imageFormat.constData(),-1)) throw std::runtime_error("Failed to save image!");
-	buff.close();
+	downsampleToIntendedSize(img, args);
+	output.sdf = encodeSdfImage(img, args);
 }
 
 void SdfGenerationContext::processOutlineGlyphEnd(StoredVectorImage& output, const SDFGenerationArguments& args, bool flipY)
 {
+	output.version = StoredVectorImage::CURRENT_VERSION;
+	output.processingSize = args.internalProcessSize;
+	output.padding = args.padding;
+	output.type = args.type;
+	output.distType = args.distType;
+	output.setImageFormat(args.imageFormat);
+	output.mipmaps.clear();
 	decompositionContext.translateToNewSize(args.internalProcessSize,args.internalProcessSize,args.padding,args.padding, output.minX, output.maxX, output.minY, output.maxY, flipY);
 	if(args.msdfgenColouring) decompositionContext.assignColoursMsdfgen();
 	else decompositionContext.assignColours();
 
 	QImage img = produceOutlineSdf(decompositionContext, args);
+	downsampleToIntendedSize(img, args);
 
-	if(args.intendedSize) {
-		unsigned integerScale = args.internalProcessSize / args.intendedSize;
-		unsigned powerOfTwoTargeet = nextPowerOf2(args.intendedSize);
-		int steps = __builtin_clz(powerOfTwoTargeet) - __builtin_clz(args.internalProcessSize);
-		if(args.maximizeInsteadOfAverage) {
-			for(int i = 0; i < steps; ++i) {
-				img = dowsanmpleImageByMaxing(img);
-			}
-		} else {
-			for(int i = 0; i < steps; ++i) {
-				img = downsampleImageByAveraging(img);
-			}
-		}
-		if(img.width() != args.intendedSize) img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-	}
-	if(args.createMipmaps) {
-		bool toContinue = true;
-		do {
-			QByteArray byteArr;
-			QBuffer buff(&byteArr);
-			buff.open(QIODevice::WriteOnly);
-			if( args.type == SDFType::MSDF ) {
-				QImage img2 = img.convertToFormat( QImage::Format_RGB888 );
-				if(!img2.save(&buff, args.imageFormat.constData(),-1)) throw std::runtime_error("Failed to save image!");
-			} else {
-				if(!img.save(&buff, args.imageFormat.constData(),-1)) throw std::runtime_error("Failed to save image!");
-			}
-			buff.close();
-			output.mipmaps.push_back(byteArr);
-			if(img.width() > 2 && img.height() > 2) {
-				img = downsampleImageByAveraging(img);
-			} else toContinue = false;
-		} while(toContinue);
-	} else {
-		// Non-mipmap path
-		if( args.type == SDFType::MSDF ) img = img.convertToFormat( QImage::Format_RGB888 );
-		QByteArray byteArr;
-		QBuffer buff(&byteArr);
-		buff.open(QIODevice::WriteOnly);
-		if(!img.save(&buff, args.imageFormat.constData(),-1)) throw std::runtime_error("Failed to save image!");
-		buff.close();
-		output.mipmaps.push_back(byteArr);
+	output.actualSize = static_cast<uint32_t>(img.width());
+	output.distanceRangeX = effectiveDistanceRange(args.samples_to_check_x, args, output.actualSize);
+	output.distanceRangeY = effectiveDistanceRange(args.samples_to_check_y, args, output.actualSize);
+	output.encodingFlags = vectorEncodingFlags(args);
+	output.midpointAdjustment = args.midpointAdjustment.value_or(1.0f);
+
+	while(true) {
+		output.mipmaps.push_back(encodeSdfImage(img, args));
+		if(!args.createMipmaps || img.width() <= 1 || img.height() <= 1) break;
+		img = downsampleImageForArgs(img, args);
 	}
 }
 
@@ -395,29 +421,12 @@ void SdfGenerationContext::processBitmapGlyph(StoredCharacter& output, FT_GlyphS
 	}
 	output.valid = true;
 
-	QBuffer buff(&output.sdf);
 	QImage oldImg = FTBitmap2QImage(glyphSlot->bitmap, args.internalProcessSize - (args.padding*2), args.internalProcessSize - (args.padding*2));
 	oldImg = producePaddedVariantOfImage(oldImg, padding);
 	QImage img = produceBitmapSdf(oldImg, args);
 
-	if(args.intendedSize) {
-			unsigned integerScale = args.internalProcessSize / args.intendedSize;
-			unsigned powerOfTwoTargeet = nextPowerOf2(args.intendedSize);
-			int steps = __builtin_clz(powerOfTwoTargeet) - __builtin_clz(args.internalProcessSize);
-			if(args.maximizeInsteadOfAverage) {
-				for(int i = 0; i < steps; ++i) {
-					img = dowsanmpleImageByMaxing(img);
-				}
-			} else {
-				for(int i = 0; i < steps; ++i) {
-					img = downsampleImageByAveraging(img);
-				}
-			}
-			if(img.width() != args.intendedSize) img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-	}
-	buff.open(QIODevice::WriteOnly);
-	if(!img.save(&buff, args.imageFormat.constData(),-1)) throw std::runtime_error("Failed to save image!");
-	buff.close();
+	downsampleToIntendedSize(img, args);
+	output.sdf = encodeSdfImage(img, args);
 }
 
 void SdfGenerationContext::processFont(PreprocessedFontFace& output, const SDFGenerationArguments& args)
@@ -459,10 +468,7 @@ void SdfGenerationContext::processFont(PreprocessedFontFace& output, const SDFGe
 	auto minChar = args.char_min;
 	auto maxChar = args.char_max;
 
-	auto fonttype = FT_Get_FSType_Flags(face);
-
 	QMap<uint32_t,uint32_t> charcodeToGlyphIndex;
-	QMap<uint32_t,uint32_t> glyphIndexToCharCode;
 	for(uint32_t charcode = minChar; charcode < maxChar; ++charcode) {
 		auto glyph_index = FT_Get_Char_Index( face, charcode );
 		if(glyph_index) {
@@ -477,7 +483,6 @@ void SdfGenerationContext::processFont(PreprocessedFontFace& output, const SDFGe
 			if(strdChr.valid) {
 				output.storedCharacters.insert(charcode, strdChr);
 				charcodeToGlyphIndex.insert(charcode,glyph_index);
-				glyphIndexToCharCode.insert(glyph_index,charcode);
 			}
 		}
 	}
@@ -505,17 +510,7 @@ void SdfGenerationContext::processFont(PreprocessedFontFace& output, const SDFGe
 
 void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteArray& buff, const SDFGenerationArguments& args)
 {
-	std::unique_ptr<svgtiny_diagram,decltype(&svgtiny_free)> diagram(svgtiny_create(),svgtiny_free);
-	svgtiny_code code = svgtiny_parse(diagram.get(), buff.data(), buff.size(), "file:///tmp/HelloDarknessMyOldFriend.svg", -1, -1);
-	switch(code) {
-		case svgtiny_OK: break;
-		case svgtiny_OUT_OF_MEMORY: throw std::runtime_error("Out of memory!");
-		case svgtiny_LIBDOM_ERROR: throw std::runtime_error("LibBom error!");
-		case svgtiny_NOT_SVG: throw std::runtime_error("This is not an SVG!");
-		case svgtiny_SVG_ERROR: throw std::runtime_error("SVG error!");
-		default: throw std::runtime_error("Unknown error!");
-			break;
-	}
+	SvgDiagramPtr diagram = parseSvgDiagram(buff);
 	output.version = PreprocessedFontFace::CURRENT_VERSION;
 	output.type = args.type;
 	output.distType = args.distType;
@@ -581,34 +576,24 @@ void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteA
 
 void SdfGenerationContext::processSvg(StoredVectorImage& output, const QByteArray& buff, const SDFGenerationArguments& args)
 {
-	std::unique_ptr<svgtiny_diagram,decltype(&svgtiny_free)> diagram(svgtiny_create(),svgtiny_free);
-	svgtiny_code code = svgtiny_parse(diagram.get(), buff.data(), buff.size(), "file:///tmp/HelloDarknessMyOldFriend.svg", -1, -1);
-	switch(code) {
-		case svgtiny_OK: break;
-		case svgtiny_OUT_OF_MEMORY: throw std::runtime_error("Out of memory!");
-		case svgtiny_LIBDOM_ERROR: throw std::runtime_error("LibBom error!");
-		case svgtiny_NOT_SVG: throw std::runtime_error("This is not an SVG!");
-		case svgtiny_SVG_ERROR: throw std::runtime_error("SVG error!");
-		default: throw std::runtime_error("Unknown error!");
-			break;
-	}
-	output.version = PreprocessedFontFace::CURRENT_VERSION;
+	SvgDiagramPtr diagram = parseSvgDiagram(buff);
+	output.version = StoredVectorImage::CURRENT_VERSION;
 	output.type = args.type;
 	output.distType = args.distType;
 	output.setImageFormat(args.imageFormat);
-	// Fill output's fields, obviously
 	switch (args.svgTreatment) {
 		case SeparateShapes: {
 			throw std::runtime_error("Separate shapes are not supported for a StoredVectorImage output!");
 		}
 		case ShapesAllInOne: {
-			// Fill output's fields, obviously
-			output.logicalWidth = diagram->width;
-			output.logicalHeight = diagram->height;
+			output.logicalWidth = static_cast<float>(diagram->width);
+			output.logicalHeight = static_cast<float>(diagram->height);
 			output.logicalX = 0.0f; // We don't get this from tinysvg!
 			output.logicalY = 0.0f; // We don't get this from tinysvg!
-			output.aspectRatio = output.logicalWidth / output.logicalHeight;
 			processSvgShapes(output,std::span<const svgtiny_shape>(diagram->shape, diagram->shape_count), args);
+			if(output.logicalWidth <= 0.0f) output.logicalWidth = output.maxX - output.minX;
+			if(output.logicalHeight <= 0.0f) output.logicalHeight = output.maxY - output.minY;
+			output.aspectRatio = output.logicalHeight > 0.0f ? output.logicalWidth / output.logicalHeight : 1.0f;
 			break;
 		}
 		default: break;
@@ -632,6 +617,9 @@ void SdfGenerationContext::processSvgShape(StoredVectorImage& output, const svgt
 	decomposeSvgShape(decompositionContext, shape, isFirstShape);
 	//decompositionContext.orientContours();
 	processOutlineGlyphEnd(output,args,false);
+	if(output.logicalWidth <= 0.0f) output.logicalWidth = output.maxX - output.minX;
+	if(output.logicalHeight <= 0.0f) output.logicalHeight = output.maxY - output.minY;
+	output.aspectRatio = output.logicalHeight > 0.0f ? output.logicalWidth / output.logicalHeight : 1.0f;
 }
 
 void SdfGenerationContext::processSvgShapes(StoredCharacter& output, const std::span<const svgtiny_shape>& shapes, const SDFGenerationArguments& args)
@@ -658,7 +646,7 @@ void SdfGenerationContext::processSvgShapes(StoredVectorImage& output, const std
 	for(const auto& it : shapes) {
 		isValid = isValid || (it.path != nullptr);
 	}
-	if(!isValid) return;
+	if(!isValid) throw std::runtime_error("SVG contains no path data to process.");
 	decompositionContext.clear();
 	bool isFirstShape = true;
 	for(const auto& it : shapes) {
@@ -671,21 +659,16 @@ void SdfGenerationContext::processSvgShapes(StoredVectorImage& output, const std
 void SdfGenerationContext::decomposeSvgShape(FontOutlineDecompositionContext& decompositionContext, const svgtiny_shape& shape, bool isFirstShape)
 {
 	if(!shape.path) return;
-	bool isFirstSubcontour = isFirstShape;
-	int moveCount = 0;
+	(void)isFirstShape;
 	for (unsigned int i = 0; i < shape.path_length; ) {
 		switch ( static_cast<int>(shape.path[i]) ) {
 			case svgtiny_PATH_MOVE:
 				decompositionContext.moveTo(glm::fvec2(shape.path[i + 1],shape.path[i + 2]), true );
-				//decompositionContext.moveTo(glm::fvec2(shape.path[i + 1],shape.path[i + 2]), true, isFirstSubcontour ? ReverseIf::GREATER : ReverseIf::LESSER );
 				i += 3;
-				++moveCount;
 				break;
 			case svgtiny_PATH_CLOSE:
 				decompositionContext.closeShape(true);
-				//decompositionContext.closeShape(true, isFirstSubcontour ? ReverseIf::GREATER : ReverseIf::LESSER);
 				i += 1;
-				isFirstSubcontour = false;
 				break;
 			case svgtiny_PATH_LINE:
 				decompositionContext.lineTo( glm::fvec2(shape.path[i + 1],shape.path[i + 2]) );

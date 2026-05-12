@@ -8,8 +8,10 @@
  * 
  * Command-line usage:
  * - Use "nogui" argument to run in command-line mode
- * - Input: --infont <path> or --insvg <path> or --inbin <path> or --incbor <path>
- * - Output: --outbin <path> or --outcbor <path> or --outfont <pattern>
+ * - Input: --infont <path>, --insvg <path>, --inbin <path>, --incbor <path>,
+ *          --invectorbin <path>, or --invectorcbor <path>
+ * - Output: --outbin <path>, --outcbor <path>, --outfont <pattern>,
+ *           --outvectorbin <path>, or --outvectorcbor <path>
  * - See SDFGenerationArguments for all available options
  */
 
@@ -49,6 +51,9 @@ int main(int argc, char *argv[])
 		}
 		strm.flush();
 		PreprocessedFontFace fontface;
+		StoredVectorImage vectorImage;
+		bool hasFontFace = false;
+		bool hasVectorImage = false;
 		if( args.contains( IN_FONT_KEY ) ) {
 			SDFGenerationArguments sdfArgs;
 			sdfArgs.fromArgs(args);
@@ -60,6 +65,7 @@ int main(int argc, char *argv[])
 					break;
 			}
 			ctx->processFont(fontface,sdfArgs);
+			hasFontFace = true;
 		}
 		if( args.contains( IN_SVG_KEY ) ) {
 			auto svgpath = args[IN_SVG_KEY].toString();
@@ -74,7 +80,36 @@ int main(int argc, char *argv[])
 			}
 			QFile svgFile(svgpath);
 			if( svgFile.open(QFile::ReadOnly) ) {
-				ctx->processSvg(fontface, svgFile.readAll(), sdfArgs);
+				const QByteArray svgData = svgFile.readAll();
+				const bool wantsVectorImage = args.contains(OUT_VECTOR_BIN_KEY) || args.contains(OUT_VECTOR_CBOR_KEY);
+				const bool wantsFontFace = args.contains(OUT_BIN_KEY) || args.contains(OUT_CBOR_KEY) || args.contains(OUT_FONT_KEY) || !wantsVectorImage;
+				if(wantsFontFace) {
+					ctx->processSvg(fontface, svgData, sdfArgs);
+					hasFontFace = true;
+				}
+				if(wantsVectorImage) {
+					ctx->processSvg(vectorImage, svgData, sdfArgs);
+					hasVectorImage = true;
+				}
+			}
+		}
+		else if( args.contains( IN_VECTOR_BIN_KEY ) ) {
+			QFile fil(args.value(IN_VECTOR_BIN_KEY).toString());
+			if(fil.open(QFile::ReadOnly)) {
+				QDataStream binF(&fil);
+				binF.setVersion(QDataStream::Qt_4_0);
+				binF.setByteOrder(QDataStream::BigEndian);
+				vectorImage.fromData(binF);
+				hasVectorImage = true;
+			}
+		}
+		else if( args.contains( IN_VECTOR_CBOR_KEY ) ) {
+			QFile fil(args.value(IN_VECTOR_CBOR_KEY).toString());
+			if(fil.open(QFile::ReadOnly)) {
+				QCborValue cborv = QCborValue::fromCbor(fil.readAll());
+				fil.close();
+				vectorImage.fromCbor(cborv.toMap());
+				hasVectorImage = true;
 			}
 		}
 		else if( args.contains( IN_BIN_KEY ) ) {
@@ -84,6 +119,7 @@ int main(int argc, char *argv[])
 				binF.setVersion(QDataStream::Qt_4_0);
 				binF.setByteOrder(QDataStream::BigEndian);
 				fontface.fromData(binF);
+				hasFontFace = true;
 			}
 		}
 		else if( args.contains( IN_CBOR_KEY ) ) {
@@ -92,13 +128,16 @@ int main(int argc, char *argv[])
 				QCborValue cborv = QCborValue::fromCbor(fil.readAll());
 				fil.close();
 				fontface.fromCbor(cborv.toMap());
+				hasFontFace = true;
 			}
 		}
 
 		if(args.contains( OUT_FONT_KEY )) {
+			if(!hasFontFace) throw std::runtime_error("No preprocessed font face was loaded or generated.");
 			fontface.outToFolder( args.value(OUT_FONT_KEY).toString() );
 		}
 		if(args.contains( OUT_BIN_KEY )) {
+			if(!hasFontFace) throw std::runtime_error("No preprocessed font face was loaded or generated.");
 			QFile fil(args.value(OUT_BIN_KEY).toString());
 			if(fil.open(QFile::WriteOnly)) {
 				QDataStream binF(&fil);
@@ -110,9 +149,32 @@ int main(int argc, char *argv[])
 			}
 		}
 		if(args.contains( OUT_CBOR_KEY )) {
+			if(!hasFontFace) throw std::runtime_error("No preprocessed font face was loaded or generated.");
 			QFile fil(args.value(OUT_CBOR_KEY).toString());
 			if(fil.open(QFile::WriteOnly)) {
 				QCborValue cbor = fontface.toCbor();
+				fil.write(cbor.toCbor());
+				fil.flush();
+				fil.close();
+			}
+		}
+		if(args.contains( OUT_VECTOR_BIN_KEY )) {
+			if(!hasVectorImage) throw std::runtime_error("No stored vector image was loaded or generated.");
+			QFile fil(args.value(OUT_VECTOR_BIN_KEY).toString());
+			if(fil.open(QFile::WriteOnly)) {
+				QDataStream binF(&fil);
+				binF.setVersion(QDataStream::Qt_4_0);
+				binF.setByteOrder(QDataStream::BigEndian);
+				vectorImage.toData(binF);
+				fil.flush();
+				fil.close();
+			}
+		}
+		if(args.contains( OUT_VECTOR_CBOR_KEY )) {
+			if(!hasVectorImage) throw std::runtime_error("No stored vector image was loaded or generated.");
+			QFile fil(args.value(OUT_VECTOR_CBOR_KEY).toString());
+			if(fil.open(QFile::WriteOnly)) {
+				QCborValue cbor = vectorImage.toCbor();
 				fil.write(cbor.toCbor());
 				fil.flush();
 				fil.close();

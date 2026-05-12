@@ -37,6 +37,14 @@ inline glm::vec2 bezier3(const glm::vec2& p0, const glm::vec2& p1, const glm::ve
 	glm::vec2 e = lerp(b, c, t);
 	return lerp(d, e, t);
 }
+inline size_t activePointCount(const EdgeSegment& edge) {
+	switch(edge.type) {
+		case EdgeType::LINEAR: return 2;
+		case EdgeType::QUADRATIC: return 3;
+		case EdgeType::CUBIC: return 4;
+		default: return 0;
+	}
+}
 /// A special version of the cross product for 2D vectors (returns scalar value).
 inline float crossProduct(const glm::fvec2& a, const glm::fvec2& b) {
 	return a.x*b.y-a.y*b.x;
@@ -669,46 +677,38 @@ int FontOutlineDecompositionContext::moveTo(const glm::fvec2& to, bool checkWind
 
 float EdgeSegment::getMinX() const
 {
-	switch (type) {
-		case EdgeType::LINEAR: return std::min(points[LINE_P1].x,points[LINE_P2].x);
-		case EdgeType::QUADRATIC: return std::min(points[QUADRATIC_P1].x,points[QUADRATIC_P2].x);
-		case EdgeType::CUBIC: return std::min(points[CUBIC_P1].x,points[CUBIC_P2].x);
-		default: return 0;
-			break;
+	float result = std::numeric_limits<float>::max();
+	for(size_t i = 0; i < activePointCount(*this); ++i) {
+		result = std::min(result, points[i].x);
 	}
+	return result == std::numeric_limits<float>::max() ? 0.0f : result;
 }
 
 float EdgeSegment::getMinY() const
 {
-	switch (type) {
-		case EdgeType::LINEAR: return std::min(points[LINE_P1].y,points[LINE_P2].y);
-		case EdgeType::QUADRATIC: return std::min(points[QUADRATIC_P1].y,points[QUADRATIC_P2].y);
-		case EdgeType::CUBIC: return std::min(points[CUBIC_P1].y,points[CUBIC_P2].y);
-		default: return 0;
-			break;
+	float result = std::numeric_limits<float>::max();
+	for(size_t i = 0; i < activePointCount(*this); ++i) {
+		result = std::min(result, points[i].y);
 	}
+	return result == std::numeric_limits<float>::max() ? 0.0f : result;
 }
 
 float EdgeSegment::getMaxX() const
 {
-	switch (type) {
-		case EdgeType::LINEAR: return std::max(points[LINE_P1].x,points[LINE_P2].x);
-		case EdgeType::QUADRATIC: return std::max(points[QUADRATIC_P1].x,points[QUADRATIC_P2].x);
-		case EdgeType::CUBIC: return std::max(points[CUBIC_P1].x,points[CUBIC_P2].x);
-		default: return 0;
-			break;
+	float result = std::numeric_limits<float>::lowest();
+	for(size_t i = 0; i < activePointCount(*this); ++i) {
+		result = std::max(result, points[i].x);
 	}
+	return result == std::numeric_limits<float>::lowest() ? 0.0f : result;
 }
 
 float EdgeSegment::getMaxY() const
 {
-	switch (type) {
-		case EdgeType::LINEAR: return std::max(points[LINE_P1].y,points[LINE_P2].y);
-		case EdgeType::QUADRATIC: return std::max(points[QUADRATIC_P1].y,points[QUADRATIC_P2].y);
-		case EdgeType::CUBIC: return std::max(points[CUBIC_P1].y,points[CUBIC_P2].y);
-		default: return 0;
-			break;
+	float result = std::numeric_limits<float>::lowest();
+	for(size_t i = 0; i < activePointCount(*this); ++i) {
+		result = std::max(result, points[i].y);
 	}
+	return result == std::numeric_limits<float>::lowest() ? 0.0f : result;
 }
 
 /*
@@ -1142,19 +1142,23 @@ void FontOutlineDecompositionContext::translateToNewSize(unsigned int nWidth, un
 
 void FontOutlineDecompositionContext::translateToNewSize(unsigned int nWidth, unsigned int nHeight, unsigned int paddingX, unsigned int paddingY, float& minX, float& maxX, float& minY, float& maxY, bool invertY)
 {
+	if(nWidth <= (2 * paddingX) || nHeight <= (2 * paddingY)) {
+		throw std::runtime_error("Padding leaves no drawable area for vector outline.");
+	}
 	const unsigned widthWithoutPadding = nWidth - (2 * paddingX);
 	const unsigned heightWithoutPadding = nHeight - (2 * paddingY);
 	minX = std::numeric_limits<float>::max();
-	maxX = std::numeric_limits<float>::epsilon();
+	maxX = std::numeric_limits<float>::lowest();
 	minY = std::numeric_limits<float>::max();
-	maxY = std::numeric_limits<float>::epsilon();
+	maxY = std::numeric_limits<float>::lowest();
 	for(const auto& it : edges) {
-		for(const auto& jt : it.points) {
-			minX = std::min(minX,jt.x);
-			minY = std::min(minY,jt.y);
-			maxX = std::max(maxX,jt.x);
-			maxY = std::max(maxY,jt.y);
-		}
+		minX = std::min(minX,it.getMinX());
+		minY = std::min(minY,it.getMinY());
+		maxX = std::max(maxX,it.getMaxX());
+		maxY = std::max(maxY,it.getMaxY());
+	}
+	if(edges.empty() || (maxX - minX) <= std::numeric_limits<float>::epsilon() || (maxY - minY) <= std::numeric_limits<float>::epsilon()) {
+		throw std::runtime_error("Vector outline bounds are empty or degenerate.");
 	}
 	float x_rng = static_cast<float>(widthWithoutPadding) / static_cast<float>(maxX - minX);
 	float y_rng = static_cast<float>(heightWithoutPadding) / static_cast<float>(maxY - minY);
