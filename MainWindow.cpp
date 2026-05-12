@@ -23,13 +23,13 @@ MainWindow::~MainWindow()
 
 void MainWindow::on_loadPathBtn_clicked()
 {
-	ui->loadPathEdit->setText(QFileDialog::getOpenFileName(this, tr("Open file"), QString(), tr("Font files (*.ttf *.otf);;Binary files (*.bin);;CBOR files (*.cbor);;")));
+	ui->loadPathEdit->setText(QFileDialog::getOpenFileName(this, tr("Open file"), QString(), tr("Font files (*.ttf *.otf);;WOD font files (*.wodf);;Binary files (*.bin);;CBOR files (*.cbor);;")));
 }
 
 
 void MainWindow::on_saveBtnPath_clicked()
 {
-	ui->savePathEdit->setText(QFileDialog::getSaveFileName(this, tr("Open file"), QString(), tr("Binary files (*.bin);;CBOR files (*.cbor);;")));
+	ui->savePathEdit->setText(QFileDialog::getSaveFileName(this, tr("Open file"), QString(), tr("WOD font files (*.wodf);;Binary files (*.bin);;CBOR files (*.cbor);;")));
 }
 
 
@@ -55,7 +55,7 @@ void MainWindow::on_loadBtn_clicked()
 			QMessageBox::critical(this, QStringLiteral("Error!"), QString::fromUtf8(exp.what()));
 		}
 	}
-	if(loadPath.endsWith(QStringLiteral(".bin"))) {
+	if(loadPath.endsWith(QStringLiteral(".wodf")) || loadPath.endsWith(QStringLiteral(".bin"))) {
 		try {
 			loadBinFont(loadPath);
 		} catch(std::exception& exp) {
@@ -259,4 +259,3 @@ void MainWindow::repaintGl()
 {
 	this->ui->openGLWidget->update();
 }
-

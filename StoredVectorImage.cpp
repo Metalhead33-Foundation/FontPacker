@@ -30,6 +30,14 @@ void validateStoredVectorImageVersion(uint32_t version)
 	}
 }
 
+void validateStoredVectorImageMagic(QDataStream& dataStream)
+{
+	std::array<char,StoredVectorImage::BINARY_MAGIC.size()> magic{};
+	if(dataStream.readRawData(magic.data(), magic.size()) != static_cast<int>(magic.size()) || magic != StoredVectorImage::BINARY_MAGIC) {
+		throw std::runtime_error("Invalid StoredVectorImage binary magic.");
+	}
+}
+
 }
 
 void StoredVectorImage::toCbor(QCborMap& cbor) const
@@ -102,6 +110,7 @@ void StoredVectorImage::fromCbor(const QCborMap& cbor)
 
 void StoredVectorImage::toData(QDataStream& dataStream) const
 {
+	dataStream.writeRawData(BINARY_MAGIC.data(), BINARY_MAGIC.size());
 	dataStream << version << processingSize << actualSize << padding
 			   << logicalX << logicalY << logicalWidth << logicalHeight << aspectRatio
 			   << minX << maxX << minY << maxY
@@ -120,6 +129,7 @@ void StoredVectorImage::fromData(QDataStream& dataStream)
 	uint8_t tmpType;
 	uint8_t tmpDistType;
 	uint32_t mipmapCount;
+	validateStoredVectorImageMagic(dataStream);
 	dataStream >> version;
 	validateStoredVectorImageVersion(version);
 	dataStream >> processingSize >> actualSize >> padding

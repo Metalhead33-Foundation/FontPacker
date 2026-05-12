@@ -10,6 +10,7 @@
 
 struct StoredVectorImage
 {
+	static constexpr std::array<char,4> BINARY_MAGIC{{'W','O','D','I'}};
 	static constexpr uint32_t CURRENT_VERSION = 1;
 
 	enum EncodingFlag : uint32_t {

@@ -1,10 +1,12 @@
 # Binary Format Specification
 
-This document describes the binary format used by FontPacker for storing preprocessed font data. The format uses QDataStream with Qt 4.0 compatibility and Big-Endian byte order.
+This document describes the binary formats used by FontPacker for storing preprocessed font data and standalone vector-image SDF data. The formats use QDataStream with Qt 4.0 compatibility and Big-Endian byte order.
 
 ## Format Overview
 
-The binary format consists of a single `PreprocessedFontFace` structure that contains font metadata, kerning information, and glyph data.
+Font binary files use the `.wodf` extension and begin with the ASCII magic `WODF`.
+
+Standalone vector-image binary files use the `.wodi` extension and begin with the ASCII magic `WODI`.
 
 ## Data Types and Endianness
 
@@ -21,20 +23,33 @@ The binary format consists of a single `PreprocessedFontFace` structure that con
 - **Strings**: 
   - UTF-8 encoded byte arrays with length prefix
 - **Fixed strings**:
+  - `char[4]`: Raw ASCII magic identifier, not null-terminated
   - `char[8]`: Null-terminated ASCII string, padded with zeros
 
 ## File Structure
 
-The file contains a single `PreprocessedFontFace` structure:
+The font binary file contains a single `PreprocessedFontFace` structure:
 
 ```
 PreprocessedFontFace {
+    magic = "WODF"
     version
     Font Family Name (UTF-8 string with length)
     Font Metadata (type, distType, sizes, flags)
     Glyph Table of Contents (offset table)
     Kerning Data
     Glyph Data (stored at offsets from TOC)
+}
+```
+
+The standalone vector-image binary file contains a single `StoredVectorImage` structure:
+
+```
+StoredVectorImage {
+    magic = "WODI"
+    version
+    Vector Metadata
+    Encoded Mipmaps
 }
 ```
 
@@ -45,23 +60,24 @@ PreprocessedFontFace {
 ```
 Offset  Field                    Type        Description
 ------  ----------------------  ----------  -----------------------------------------
-0       version                 uint32_t    PreprocessedFontFace format version
-4       familyNameSize          uint32_t    Length of font family name in bytes
-8       familyName              uint8[]     UTF-8 encoded font family name (familyNameSize bytes)
-8+N     type                    uint8_t     SDFType enumeration value
-8+N+1   distType                uint8_t     DistanceType enumeration value
-8+N+2   bitmap_size             uint32_t    Bitmap size in pixels
-8+N+6   bitmap_logical_size     uint32_t    Logical bitmap size
-8+N+10  bitmap_padding          uint32_t    Bitmap padding in pixels
-8+N+14  hasVert                 bool        Whether vertical layout is supported
-8+N+15  imageFormat             char[8]     Null-terminated glyph image format (e.g. PNG)
-8+N+23  ascender                float       Scaled face ascender in pixels
-8+N+27  descender               float       Scaled face descender in pixels
-8+N+31  faceHeight              float       Scaled baseline-to-baseline distance in pixels
-8+N+35  maxAdvance              float       Scaled maximum advance in pixels
-8+N+39  unitsPerEm              uint32_t    Original font units per EM
-8+N+43  charCount               uint32_t    Number of glyphs stored
-8+N+47  glyphTOC                GlyphTOC[]  Table of contents for glyphs (charCount entries)
+0       magic                   char[4]     ASCII magic "WODF"
+4       version                 uint32_t    PreprocessedFontFace format version
+8       familyNameSize          uint32_t    Length of font family name in bytes
+12      familyName              uint8[]     UTF-8 encoded font family name (familyNameSize bytes)
+12+N    type                    uint8_t     SDFType enumeration value
+12+N+1  distType                uint8_t     DistanceType enumeration value
+12+N+2  bitmap_size             uint32_t    Bitmap size in pixels
+12+N+6  bitmap_logical_size     uint32_t    Logical bitmap size
+12+N+10 bitmap_padding          uint32_t    Bitmap padding in pixels
+12+N+14 hasVert                 bool        Whether vertical layout is supported
+12+N+15 imageFormat             char[8]     Null-terminated glyph image format (e.g. PNG)
+12+N+23 ascender                float       Scaled face ascender in pixels
+12+N+27 descender               float       Scaled face descender in pixels
+12+N+31 faceHeight              float       Scaled baseline-to-baseline distance in pixels
+12+N+35 maxAdvance              float       Scaled maximum advance in pixels
+12+N+39 unitsPerEm              uint32_t    Original font units per EM
+12+N+43 charCount               uint32_t    Number of glyphs stored
+12+N+47 glyphTOC                GlyphTOC[]  Table of contents for glyphs (charCount entries)
 ...     kerning                 KerningMap  Kerning information
 ...     glyphData                Glyph[]    Glyph data stored at offsets from TOC
 ```
@@ -163,6 +179,7 @@ If `valid == false`, only the boolean is written (1 byte). If `valid == true`, a
 
 ```
 StoredVectorImage {
+    magic                   char[4]     ASCII magic "WODI"
     version                 uint32_t    StoredVectorImage format version. Current value: 1
     processingSize          uint32_t    Square size used during SDF generation
     actualSize              uint32_t    Level-0/final square texture size
@@ -200,12 +217,13 @@ Mipmap {
 - `0x00000004` = downsampling used maximum values instead of averaging
 - `0x00000008` = `midpointAdjustment` contains a baked adjustment value
 
-## Reading Algorithm
+## Font Reading Algorithm
 
-1. Read `version` (uint32_t, 4 bytes). Current supported value is `1`.
-2. Read `familyNameSize` (uint32_t, 4 bytes)
-3. Read font family name (familyNameSize bytes, UTF-8)
-4. Read font metadata:
+1. Read `magic` (char[4], 4 bytes). For font files this must be `WODF`.
+2. Read `version` (uint32_t, 4 bytes). Current supported value is `1`.
+3. Read `familyNameSize` (uint32_t, 4 bytes)
+4. Read font family name (familyNameSize bytes, UTF-8)
+5. Read font metadata:
    - `type` (uint8_t, 1 byte)
    - `distType` (uint8_t, 1 byte)
    - `bitmap_size` (uint32_t, 4 bytes)
@@ -219,10 +237,10 @@ Mipmap {
    - `maxAdvance` (float, 4 bytes)
    - `unitsPerEm` (uint32_t, 4 bytes)
    - `charCount` (uint32_t, 4 bytes)
-5. Read glyph TOC: `charCount` entries, each containing:
+6. Read glyph TOC: `charCount` entries, each containing:
    - `codePoint` (uint32_t, 4 bytes)
    - `offset` (uint32_t, 4 bytes)
-6. Read `KerningMap`:
+7. Read `KerningMap`:
    - Read size (uint32_t)
    - For each entry:
      - Read `firstChar` (uint32_t)
@@ -231,7 +249,7 @@ Mipmap {
        - For each entry:
          - Read `secondChar` (uint32_t)
          - Read `Vec2f` (2 × float, 8 bytes)
-7. For each glyph in TOC:
+8. For each glyph in TOC:
    - Seek to `offset` from start of file
    - Read `StoredCharacter`:
      - Read `valid` (bool, 1 byte)
@@ -240,18 +258,19 @@ Mipmap {
        - Read `sdfLength` (uint32_t, 4 bytes)
        - Read SDF data (`sdfLength` bytes)
 
-## Writing Algorithm
+## Font Writing Algorithm
 
-1. Write `version` (uint32_t, 4 bytes). Current value is `1`.
-2. Write font family name:
+1. Write `magic` (char[4], 4 bytes). For font files this is `WODF`.
+2. Write `version` (uint32_t, 4 bytes). Current value is `1`.
+3. Write font family name:
    - Convert to UTF-8
    - Write length (uint32_t)
    - Write UTF-8 bytes
-3. Write font metadata (type, distType, sizes, flags, face metrics, charCount)
-4. Reserve space for TOC:
+4. Write font metadata (type, distType, sizes, flags, face metrics, charCount)
+5. Reserve space for TOC:
    - Record current position
    - Write `charCount` placeholder entries (all zeros, 8 bytes each)
-5. Write `KerningMap`:
+6. Write `KerningMap`:
    - Write size (uint32_t)
    - For each entry:
      - Write `firstChar` (uint32_t)
@@ -260,20 +279,43 @@ Mipmap {
        - For each entry:
          - Write `secondChar` (uint32_t)
          - Write `Vec2f` (2 × float)
-6. Write glyph data:
+7. Write glyph data:
    - For each glyph:
      - Record current position as glyph offset
      - Write `StoredCharacter` data
      - Store (codePoint, offset) mapping
-7. Write TOC:
+8. Write TOC:
    - Seek back to TOC position
    - Write all (codePoint, offset) pairs
+
+## Vector Image Reading Algorithm
+
+1. Read `magic` (char[4], 4 bytes). For standalone vector-image files this must be `WODI`.
+2. Read `version` (uint32_t, 4 bytes). Current supported value is `1`.
+3. Read vector metadata in the `StoredVectorImage` field order above.
+4. Read `mipmapCount` (uint32_t, 4 bytes).
+5. For each mipmap:
+   - Read `dataLength` (uint32_t, 4 bytes)
+   - Read encoded image data (`dataLength` bytes)
+
+## Vector Image Writing Algorithm
+
+1. Write `magic` (char[4], 4 bytes). For standalone vector-image files this is `WODI`.
+2. Write `version` (uint32_t, 4 bytes). Current value is `1`.
+3. Write vector metadata in the `StoredVectorImage` field order above.
+4. Write `mipmapCount` (uint32_t, 4 bytes).
+5. For each mipmap:
+   - Write `dataLength` (uint32_t, 4 bytes)
+   - Write encoded image data (`dataLength` bytes)
 
 ## Example Parser Pseudocode
 
 ```python
 def read_font_file(file):
     # Read header
+    magic = read_bytes(file, 4)
+    if magic != b'WODF':
+        raise ValueError(f"Unsupported font magic: {magic!r}")
     version = read_uint32_be(file)
     if version != 1:
         raise ValueError(f"Unsupported PreprocessedFontFace version: {version}")
@@ -361,6 +403,7 @@ def read_stored_character(file):
 ## Notes
 
 - All multi-byte integers and floats are in **Big-Endian** byte order
+- The first four bytes identify the binary container: `WODF` for font files and `WODI` for standalone vector-image files
 - The TOC allows for efficient random access to glyphs without reading the entire file
 - Glyph data is stored at variable offsets, so the file must support seeking
 - The SDF bitmap data format depends on the `imageFormat` field and `type` field

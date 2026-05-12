@@ -30,9 +30,9 @@ Specify one input source:
 |----------|-------------|---------|
 | `--infont <path>` | Load font from file (TrueType/OpenType) | `--infont /path/to/font.ttf` |
 | `--insvg <path>` | Load SVG file | `--insvg /path/to/shapes.svg` |
-| `--inbin <path>` | Load preprocessed font from binary format | `--inbin font.bin` |
+| `--inbin <path>` | Load preprocessed font from binary format (`.wodf`) | `--inbin font.wodf` |
 | `--incbor <path>` | Load preprocessed font from CBOR format | `--incbor font.cbor` |
-| `--invectorbin <path>` | Load stored vector image from binary format | `--invectorbin image.vbin` |
+| `--invectorbin <path>` | Load stored vector image from binary format (`.wodi`) | `--invectorbin image.wodi` |
 | `--invectorcbor <path>` | Load stored vector image from CBOR format | `--invectorcbor image.vcbor` |
 
 **Note**: If no input is specified and `nogui` is used, the application will exit.
@@ -43,10 +43,10 @@ Specify one or more output destinations:
 
 | Argument | Description | Example |
 |----------|-------------|---------|
-| `--outbin <path>` | Save preprocessed font in binary format | `--outbin output.bin` |
+| `--outbin <path>` | Save preprocessed font in binary format (`.wodf`) | `--outbin output.wodf` |
 | `--outcbor <path>` | Save preprocessed font in CBOR format | `--outcbor output.cbor` |
 | `--outfont <pattern>` | Export individual glyph SDF files | `--outfont glyph_%1.bin` |
-| `--outvectorbin <path>` | Save stored vector image in binary format | `--outvectorbin image.vbin` |
+| `--outvectorbin <path>` | Save stored vector image in binary format (`.wodi`) | `--outvectorbin image.wodi` |
 | `--outvectorcbor <path>` | Save stored vector image in CBOR format | `--outvectorcbor image.vcbor` |
 
 The `--outfont` pattern uses `%1` as a placeholder for the Unicode code point.
@@ -177,7 +177,7 @@ fontpacker --nogui --infont /usr/share/fonts/truetype/arial.ttf \
   --type SDF --mode Software \
   --internalprocesssize 1024 --intendedsize 32 --padding 100 \
   --mincharcode 32 --mincharcode 126 \
-  --outbin arial_sdf.bin
+  --outbin arial_sdf.wodf
 ```
 
 #### Generate MSDF from a font file (GPU mode):
@@ -186,7 +186,7 @@ fontpacker --nogui --infont font.ttf \
   --type MSDF --mode OpenGL \
   --internalprocesssize 2048 --intendedsize 64 --padding 200 \
   --msdfgencoloring \
-  --outbin font_msdf.bin
+  --outbin font_msdf.wodf
 ```
 
 #### Generate SDF from SVG file:
@@ -194,7 +194,7 @@ fontpacker --nogui --infont font.ttf \
 fontpacker --nogui --insvg shapes.svg \
   --type SDF --mode Software \
   --internalprocesssize 1024 --intendedsize 32 \
-  --outbin shapes_sdf.bin
+  --outbin shapes_sdf.wodf
 ```
 
 #### Generate a standalone vector image from SVG:
@@ -203,7 +203,7 @@ fontpacker --nogui --insvg icon.svg \
   --type SDF --mode OpenGL \
   --internalprocesssize 1024 --intendedsize 128 \
   --padding 100 --createmipmaps \
-  --outvectorbin icon_sdf.vbin
+  --outvectorbin icon_sdf.wodi
 ```
 
 When `--insvg` is combined with `--outbin` or `--outcbor`, the SVG is stored through the font-face path. When it is combined with `--outvectorbin` or `--outvectorcbor`, it is stored as a standalone `StoredVectorImage`.
@@ -211,23 +211,23 @@ When `--insvg` is combined with `--outbin` or `--outcbor`, the SVG is stored thr
 #### Convert between formats:
 ```bash
 # Binary to CBOR
-fontpacker --nogui --inbin font.bin --outcbor font.cbor
+fontpacker --nogui --inbin font.wodf --outcbor font.cbor
 
 # CBOR to Binary
-fontpacker --nogui --incbor font.cbor --outbin font.bin
+fontpacker --nogui --incbor font.cbor --outbin font.wodf
 
 # Stored vector image binary to CBOR
-fontpacker --nogui --invectorbin image.vbin --outvectorcbor image.vcbor
+fontpacker --nogui --invectorbin image.wodi --outvectorcbor image.vcbor
 
 # Export individual glyphs
-fontpacker --nogui --inbin font.bin --outfont glyphs/glyph_%1.png
+fontpacker --nogui --inbin font.wodf --outfont glyphs/glyph_%1.png
 ```
 
 #### Load and save with processing:
 ```bash
-fontpacker --nogui --inbin input.bin \
+fontpacker --nogui --inbin input.wodf \
   --format JPG --gammacorrect \
-  --outbin output.bin
+  --outbin output.wodf
 ```
 
 ## Output Format Documentation

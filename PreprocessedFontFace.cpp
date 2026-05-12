@@ -38,6 +38,14 @@ void validatePreprocessedFontFaceVersion(uint32_t version)
 	}
 }
 
+void validatePreprocessedFontFaceMagic(QDataStream& dataStream)
+{
+	std::array<char,PreprocessedFontFace::BINARY_MAGIC.size()> magic{};
+	if(dataStream.readRawData(magic.data(), magic.size()) != static_cast<int>(magic.size()) || magic != PreprocessedFontFace::BINARY_MAGIC) {
+		throw std::runtime_error("Invalid PreprocessedFontFace binary magic.");
+	}
+}
+
 }
 
 void PreprocessedFontFace::toCbor(QCborMap& cbor) const
@@ -122,6 +130,7 @@ void PreprocessedFontFace::fromCbor(const QCborMap& cbor)
 void PreprocessedFontFace::toData(QDataStream& dataStream) const
 {
 	QByteArray utf8str = this->fontFamilyName.toUtf8();
+	dataStream.writeRawData(BINARY_MAGIC.data(), BINARY_MAGIC.size());
 	dataStream << version;
 	dataStream << static_cast<uint32_t>(utf8str.size());
 	dataStream.writeRawData(utf8str.data(),utf8str.length());
@@ -149,6 +158,7 @@ void PreprocessedFontFace::toData(QDataStream& dataStream) const
 void PreprocessedFontFace::fromData(QDataStream& dataStream)
 {
 	{
+		validatePreprocessedFontFaceMagic(dataStream);
 		dataStream >> version;
 		validatePreprocessedFontFaceVersion(version);
 		uint32_t familyNameSize;

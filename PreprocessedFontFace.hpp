@@ -73,6 +73,7 @@ QDataStream &operator>>(QDataStream &stream, KerningMap &processedFontFace);
  * See BINARY_FORMAT.md for the binary format specification.
  */
 struct PreprocessedFontFace {
+	static constexpr std::array<char,4> BINARY_MAGIC{{'W','O','D','F'}};
 	static constexpr uint32_t CURRENT_VERSION = 1;
 
 	uint32_t version = CURRENT_VERSION;             ///< PreprocessedFontFace serialization format version.
