@@ -13,6 +13,7 @@
 #include "SDFGenerationArguments.hpp"
 #include "PreprocessedFontFace.hpp"
 #include "StoredCharacter.hpp"
+#include "StoredVectorImage.hpp"
 #include "FontOutlineDecompositionContext.hpp"
 #include <harfbuzz/hb-ft.h>
 #include <ft2build.h>
@@ -38,6 +39,13 @@ private:
 	 * @param flipY Whether to flip Y coordinates (default: true).
 	 */
 	void processOutlineGlyphEnd(StoredCharacter& output, const SDFGenerationArguments& args, bool flipY = true);
+	/**
+	 * @brief Finalize outline glyph processing and generate SDF.
+	 * @param output Output vector image structure to populate.
+	 * @param args Generation arguments.
+	 * @param flipY Whether to flip Y coordinates (default: true).
+	 */
+	void processOutlineGlyphEnd(StoredVectorImage& output, const SDFGenerationArguments& args, bool flipY = true);
 	
 protected:
 	FT_Library library;                                    ///< FreeType library instance
@@ -114,6 +122,14 @@ public:
 	 * @param args Generation arguments.
 	 */
 	void processSvg(PreprocessedFontFace& output, const QByteArray& buff, const SDFGenerationArguments& args);
+
+	/**
+	 * @brief Process an SVG file and generate glyphs.
+	 * @param output Preprocessed vector image to populate.
+	 * @param buff SVG file data.
+	 * @param args Generation arguments.
+	 */
+	void processSvg(StoredVectorImage& output, const QByteArray& buff, const SDFGenerationArguments& args);
 	
 	/**
 	 * @brief Process a single SVG shape into a glyph.
@@ -123,6 +139,15 @@ public:
 	 * @param isFirstShape Whether this is the first shape (affects shape ID assignment).
 	 */
 	void processSvgShape(StoredCharacter& output, const svgtiny_shape& shape, const SDFGenerationArguments& args, bool isFirstShape = false);
+
+	/**
+	 * @brief Process a single SVG shape into a glyph.
+	 * @param output Output vector image structure to populate.
+	 * @param shape SVG shape to process.
+	 * @param args Generation arguments.
+	 * @param isFirstShape Whether this is the first shape (affects shape ID assignment).
+	 */
+	void processSvgShape(StoredVectorImage& output, const svgtiny_shape& shape, const SDFGenerationArguments& args, bool isFirstShape = false);
 	
 	/**
 	 * @brief Process multiple SVG shapes into a single glyph.
@@ -131,6 +156,14 @@ public:
 	 * @param args Generation arguments.
 	 */
 	void processSvgShapes(StoredCharacter& output, const std::span<const svgtiny_shape>& shapes, const SDFGenerationArguments& args);
+
+	/**
+	 * @brief Process multiple SVG shapes into a single glyph.
+	 * @param output Output vector image structure to populate.
+	 * @param shapes Span of SVG shapes to process.
+	 * @param args Generation arguments.
+	 */
+	void processSvgShapes(StoredVectorImage& output, const std::span<const svgtiny_shape>& shapes, const SDFGenerationArguments& args);
 	
 	/**
 	 * @brief Convert FreeType bitmap to QImage.

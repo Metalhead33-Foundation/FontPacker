@@ -1140,6 +1140,42 @@ void FontOutlineDecompositionContext::translateToNewSize(unsigned int nWidth, un
 	}
 }
 
+void FontOutlineDecompositionContext::translateToNewSize(unsigned int nWidth, unsigned int nHeight, unsigned int paddingX, unsigned int paddingY, float& minX, float& maxX, float& minY, float& maxY, bool invertY)
+{
+	const unsigned widthWithoutPadding = nWidth - (2 * paddingX);
+	const unsigned heightWithoutPadding = nHeight - (2 * paddingY);
+	minX = std::numeric_limits<float>::max();
+	maxX = std::numeric_limits<float>::epsilon();
+	minY = std::numeric_limits<float>::max();
+	maxY = std::numeric_limits<float>::epsilon();
+	for(const auto& it : edges) {
+		for(const auto& jt : it.points) {
+			minX = std::min(minX,jt.x);
+			minY = std::min(minY,jt.y);
+			maxX = std::max(maxX,jt.x);
+			maxY = std::max(maxY,jt.y);
+		}
+	}
+	float x_rng = static_cast<float>(widthWithoutPadding) / static_cast<float>(maxX - minX);
+	float y_rng = static_cast<float>(heightWithoutPadding) / static_cast<float>(maxY - minY);
+	for(auto& it : edges) {
+		for(auto& jt : it.points) {
+			jt.x -= minX;
+			jt.y -= minY;
+			jt.x = (jt.x * x_rng) + static_cast<float>(paddingX);
+			jt.y = (jt.y * y_rng) + static_cast<float>(paddingY);
+		}
+	}
+	// Flip Y
+	if(invertY) {
+		for(auto& it : edges) {
+			for(auto& jt : it.points) {
+				jt.y = static_cast<float>(nHeight) - jt.y;
+			}
+		}
+	}
+}
+
 void FontOutlineDecompositionContext::translateToNewSize(unsigned int nWidth, unsigned int nHeight,
 														 unsigned int paddingX, unsigned int paddingY,
 														 double metricWidth, double metricHeight,

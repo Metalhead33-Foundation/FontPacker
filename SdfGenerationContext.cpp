@@ -267,6 +267,59 @@ void SdfGenerationContext::processOutlineGlyphEnd(StoredCharacter& output, const
 	buff.close();
 }
 
+void SdfGenerationContext::processOutlineGlyphEnd(StoredVectorImage& output, const SDFGenerationArguments& args, bool flipY)
+{
+	decompositionContext.translateToNewSize(args.internalProcessSize,args.internalProcessSize,args.padding,args.padding, output.minX, output.maxX, output.minY, output.maxY, flipY);
+	if(args.msdfgenColouring) decompositionContext.assignColoursMsdfgen();
+	else decompositionContext.assignColours();
+
+	QImage img = produceOutlineSdf(decompositionContext, args);
+
+	if(args.intendedSize) {
+		unsigned integerScale = args.internalProcessSize / args.intendedSize;
+		unsigned powerOfTwoTargeet = nextPowerOf2(args.intendedSize);
+		int steps = __builtin_clz(powerOfTwoTargeet) - __builtin_clz(args.internalProcessSize);
+		if(args.maximizeInsteadOfAverage) {
+			for(int i = 0; i < steps; ++i) {
+				img = dowsanmpleImageByMaxing(img);
+			}
+		} else {
+			for(int i = 0; i < steps; ++i) {
+				img = downsampleImageByAveraging(img);
+			}
+		}
+		if(img.width() != args.intendedSize) img = img.scaled(args.intendedSize,args.intendedSize,Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+	}
+	if(args.createMipmaps) {
+		bool toContinue = true;
+		do {
+			QByteArray byteArr;
+			QBuffer buff(&byteArr);
+			buff.open(QIODevice::WriteOnly);
+			if( args.type == SDFType::MSDF ) {
+				QImage img2 = img.convertToFormat( QImage::Format_RGB888 );
+				if(!img2.save(&buff, args.imageFormat.constData(),-1)) throw std::runtime_error("Failed to save image!");
+			} else {
+				if(!img.save(&buff, args.imageFormat.constData(),-1)) throw std::runtime_error("Failed to save image!");
+			}
+			buff.close();
+			output.mipmaps.push_back(byteArr);
+			if(img.width() > 2 && img.height() > 2) {
+				img = downsampleImageByAveraging(img);
+			} else toContinue = false;
+		} while(toContinue);
+	} else {
+		// Non-mipmap path
+		if( args.type == SDFType::MSDF ) img = img.convertToFormat( QImage::Format_RGB888 );
+		QByteArray byteArr;
+		QBuffer buff(&byteArr);
+		buff.open(QIODevice::WriteOnly);
+		if(!img.save(&buff, args.imageFormat.constData(),-1)) throw std::runtime_error("Failed to save image!");
+		buff.close();
+		output.mipmaps.push_back(byteArr);
+	}
+}
+
 QImage SdfGenerationContext::producePaddedVariantOfImage(const QImage& glyph, unsigned padding) {
 	const unsigned width_padded = glyph.width() + (padding*2);
 	const  unsigned height_padded = glyph.height() + (padding*2);
@@ -526,10 +579,55 @@ void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteA
 
 }
 
+void SdfGenerationContext::processSvg(StoredVectorImage& output, const QByteArray& buff, const SDFGenerationArguments& args)
+{
+	std::unique_ptr<svgtiny_diagram,decltype(&svgtiny_free)> diagram(svgtiny_create(),svgtiny_free);
+	svgtiny_code code = svgtiny_parse(diagram.get(), buff.data(), buff.size(), "file:///tmp/HelloDarknessMyOldFriend.svg", -1, -1);
+	switch(code) {
+		case svgtiny_OK: break;
+		case svgtiny_OUT_OF_MEMORY: throw std::runtime_error("Out of memory!");
+		case svgtiny_LIBDOM_ERROR: throw std::runtime_error("LibBom error!");
+		case svgtiny_NOT_SVG: throw std::runtime_error("This is not an SVG!");
+		case svgtiny_SVG_ERROR: throw std::runtime_error("SVG error!");
+		default: throw std::runtime_error("Unknown error!");
+			break;
+	}
+	output.version = PreprocessedFontFace::CURRENT_VERSION;
+	output.type = args.type;
+	output.distType = args.distType;
+	output.setImageFormat(args.imageFormat);
+	// Fill output's fields, obviously
+	switch (args.svgTreatment) {
+		case SeparateShapes: {
+			throw std::runtime_error("Separate shapes are not supported for a StoredVectorImage output!");
+		}
+		case ShapesAllInOne: {
+			// Fill output's fields, obviously
+			output.logicalWidth = diagram->width;
+			output.logicalHeight = diagram->height;
+			output.logicalX = 0.0f; // We don't get this from tinysvg!
+			output.logicalY = 0.0f; // We don't get this from tinysvg!
+			output.aspectRatio = output.logicalWidth / output.logicalHeight;
+			processSvgShapes(output,std::span<const svgtiny_shape>(diagram->shape, diagram->shape_count), args);
+			break;
+		}
+		default: break;
+	}
+}
+
 void SdfGenerationContext::processSvgShape(StoredCharacter& output, const svgtiny_shape& shape, const SDFGenerationArguments& args, bool isFirstShape)
 {
 	if(!shape.path) return;
 	output.valid = true;
+	decompositionContext.clear();
+	decomposeSvgShape(decompositionContext, shape, isFirstShape);
+	//decompositionContext.orientContours();
+	processOutlineGlyphEnd(output,args,false);
+}
+
+void SdfGenerationContext::processSvgShape(StoredVectorImage& output, const svgtiny_shape& shape, const SDFGenerationArguments& args, bool isFirstShape)
+{
+	if(!shape.path) return;
 	decompositionContext.clear();
 	decomposeSvgShape(decompositionContext, shape, isFirstShape);
 	//decompositionContext.orientContours();
@@ -551,6 +649,22 @@ void SdfGenerationContext::processSvgShapes(StoredCharacter& output, const std::
 		isFirstShape = false;
 	}
 	//decompositionContext.orientContours();
+	processOutlineGlyphEnd(output,args,false);
+}
+
+void SdfGenerationContext::processSvgShapes(StoredVectorImage& output, const std::span<const svgtiny_shape>& shapes, const SDFGenerationArguments& args)
+{
+	bool isValid = false;
+	for(const auto& it : shapes) {
+		isValid = isValid || (it.path != nullptr);
+	}
+	if(!isValid) return;
+	decompositionContext.clear();
+	bool isFirstShape = true;
+	for(const auto& it : shapes) {
+		if(it.path) decomposeSvgShape(decompositionContext, it, isFirstShape);
+		isFirstShape = false;
+	}
 	processOutlineGlyphEnd(output,args,false);
 }
 

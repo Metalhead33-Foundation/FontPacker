@@ -322,6 +322,21 @@ struct FontOutlineDecompositionContext {
 	 * @param invertY Whether to invert Y coordinates (default: true).
 	 */
 	void translateToNewSize(unsigned nWidth, unsigned nHeight, unsigned paddingX, unsigned paddingY, bool invertY = true);
+
+
+	/**
+	 * @brief Translate and scale edges to a new size.
+	 * @param nWidth New width.
+	 * @param nHeight New height.
+	 * @param paddingX Horizontal padding.
+	 * @param paddingY Vertical padding.
+	 * @param minX Output for recording the minimum X coordinate.
+	 * @param maxX Output for recording the maximum X coordinate.
+	 * @param minY Output for recording the minimum Y coordinate.
+	 * @param maxY Output for recording the maximum Y coordinate.
+	 * @param invertY Whether to invert Y coordinates (default: true).
+	 */
+	void translateToNewSize(unsigned nWidth, unsigned nHeight, unsigned paddingX, unsigned paddingY, float& minX, float& maxX, float& minY, float& maxY, bool invertY = true);
 	
 	/**
 	 * @brief Translate and scale edges to a new size with metrics.

@@ -78,5 +78,6 @@ extern const QString MIDPOINT_ADJUSTMENT_KEY;
 extern const QString MAXIMIZE_INSTEAD_OF_AVERAGE_KEY;
 extern const QString INVERT_KEY;
 extern const QString MSDFGEN_COLOURING;
+extern const QString CREATE_MIPMAPS_KEY;
 
 #endif // CONSTSTRINGS_HPP

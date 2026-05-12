@@ -64,3 +64,4 @@ const QString MIDPOINT_ADJUSTMENT_KEY = QStringLiteral("midpointadjustment");
 const QString MAXIMIZE_INSTEAD_OF_AVERAGE_KEY = QStringLiteral("maximizeinsteadofaverage");
 const QString INVERT_KEY = QStringLiteral("invert");
 const QString MSDFGEN_COLOURING = QStringLiteral("msdfgencoloring");
+const QString CREATE_MIPMAPS_KEY = QStringLiteral("createmipmaps");

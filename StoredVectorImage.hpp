@@ -53,7 +53,7 @@ struct StoredVectorImage
 	SDFType type = SDF;                              ///< Type of signed distance field (SDF, MSDF, MSDFA)
 	DistanceType distType = Manhattan;               ///< Distance calculation method (Manhattan or Euclidean)
 	std::array<char,8> imageFormat{{'P','N','G','\0','\0','\0','\0','\0'}}; ///< Null-terminated encoded image format
-	QList<QByteArray> mipmaps;
+	QList<QByteArray> mipmaps; ///< The final stored mipmaps.
 
 	/**
 	 * @brief Serialize to CBOR format.

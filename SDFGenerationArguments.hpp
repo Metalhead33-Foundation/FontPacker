@@ -76,6 +76,7 @@ struct SDFGenerationArguments {
 	bool gammaCorrect;                            ///< Apply gamma correction
 	bool maximizeInsteadOfAverage;                ///< Use maximum instead of average when downsampling
 	std::optional<float> midpointAdjustment;     ///< Optional adjustment to SDF midpoint threshold
+	bool createMipmaps;                          ///< Whether to create mipmaps or not. Only used for regular vector images.
 	
 	/**
 	 * @brief Parse arguments from a QVariantMap (typically from command-line or UI).
