@@ -369,6 +369,7 @@ void SdfGenerationContext::processBitmapGlyph(StoredCharacter& output, FT_GlyphS
 
 void SdfGenerationContext::processFont(PreprocessedFontFace& output, const SDFGenerationArguments& args)
 {
+	output.version = PreprocessedFontFace::CURRENT_VERSION;
 	output.type = args.type;
 	output.distType = args.distType;
 	output.bitmap_size = args.intendedSize;
@@ -462,6 +463,7 @@ void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteA
 		default: throw std::runtime_error("Unknown error!");
 			break;
 	}
+	output.version = PreprocessedFontFace::CURRENT_VERSION;
 	output.type = args.type;
 	output.distType = args.distType;
 	output.bitmap_size = args.intendedSize;

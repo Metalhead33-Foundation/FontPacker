@@ -29,6 +29,7 @@ The file contains a single `PreprocessedFontFace` structure:
 
 ```
 PreprocessedFontFace {
+    version
     Font Family Name (UTF-8 string with length)
     Font Metadata (type, distType, sizes, flags)
     Glyph Table of Contents (offset table)
@@ -44,27 +45,28 @@ PreprocessedFontFace {
 ```
 Offset  Field                    Type        Description
 ------  ----------------------  ----------  -----------------------------------------
-0       familyNameSize          uint32_t    Length of font family name in bytes
-4       familyName              uint8[]     UTF-8 encoded font family name (familyNameSize bytes)
-4+N     type                    uint8_t     SDFType enumeration value
-4+N+1   distType                uint8_t     DistanceType enumeration value
-4+N+2   bitmap_size             uint32_t    Bitmap size in pixels
-4+N+6   bitmap_logical_size     uint32_t    Logical bitmap size
-4+N+10  bitmap_padding          uint32_t    Bitmap padding in pixels
-4+N+14  hasVert                 bool        Whether vertical layout is supported
-4+N+15  imageFormat             char[8]     Null-terminated glyph image format (e.g. PNG)
-4+N+23  ascender                float       Scaled face ascender in pixels
-4+N+27  descender               float       Scaled face descender in pixels
-4+N+31  faceHeight              float       Scaled baseline-to-baseline distance in pixels
-4+N+35  maxAdvance              float       Scaled maximum advance in pixels
-4+N+39  unitsPerEm              uint32_t    Original font units per EM
-4+N+43  charCount               uint32_t    Number of glyphs stored
-4+N+47  glyphTOC                GlyphTOC[]  Table of contents for glyphs (charCount entries)
+0       version                 uint32_t    PreprocessedFontFace format version
+4       familyNameSize          uint32_t    Length of font family name in bytes
+8       familyName              uint8[]     UTF-8 encoded font family name (familyNameSize bytes)
+8+N     type                    uint8_t     SDFType enumeration value
+8+N+1   distType                uint8_t     DistanceType enumeration value
+8+N+2   bitmap_size             uint32_t    Bitmap size in pixels
+8+N+6   bitmap_logical_size     uint32_t    Logical bitmap size
+8+N+10  bitmap_padding          uint32_t    Bitmap padding in pixels
+8+N+14  hasVert                 bool        Whether vertical layout is supported
+8+N+15  imageFormat             char[8]     Null-terminated glyph image format (e.g. PNG)
+8+N+23  ascender                float       Scaled face ascender in pixels
+8+N+27  descender               float       Scaled face descender in pixels
+8+N+31  faceHeight              float       Scaled baseline-to-baseline distance in pixels
+8+N+35  maxAdvance              float       Scaled maximum advance in pixels
+8+N+39  unitsPerEm              uint32_t    Original font units per EM
+8+N+43  charCount               uint32_t    Number of glyphs stored
+8+N+47  glyphTOC                GlyphTOC[]  Table of contents for glyphs (charCount entries)
 ...     kerning                 KerningMap  Kerning information
 ...     glyphData                Glyph[]    Glyph data stored at offsets from TOC
 ```
 
-Where `N = familyNameSize`.
+Where `N = familyNameSize`. Current `version` is `1`.
 
 ### Glyph Table of Contents (TOC)
 
@@ -155,11 +157,55 @@ If `valid == false`, only the boolean is written (1 byte). If `valid == true`, a
 - Variable: sdfLength (4 bytes) + sdf data (sdfLength bytes)
 - **Total: 77 bytes + sdfLength bytes**
 
+### StoredVectorImage
+
+`StoredVectorImage` is a standalone vector-image SDF container. It is not part of the `PreprocessedFontFace` glyph table.
+
+```
+StoredVectorImage {
+    version                 uint32_t    StoredVectorImage format version. Current value: 1
+    processingSize          uint32_t    Square size used during SDF generation
+    actualSize              uint32_t    Level-0/final square texture size
+    padding                 uint32_t    Padding in pixels
+    logicalX                float       Original vector canvas/viewBox X origin
+    logicalY                float       Original vector canvas/viewBox Y origin
+    logicalWidth            float       Original vector canvas/viewBox width
+    logicalHeight           float       Original vector canvas/viewBox height
+    aspectRatio             float       logicalWidth / logicalHeight
+    minX                    float       Minimum decomposed source X before normalization
+    maxX                    float       Maximum decomposed source X before normalization
+    minY                    float       Minimum decomposed source Y before normalization
+    maxY                    float       Maximum decomposed source Y before normalization
+    distanceRangeX          float       Horizontal encoded distance range in level-0 pixels
+    distanceRangeY          float       Vertical encoded distance range in level-0 pixels
+    encodingFlags           uint32_t    Bitmask of baked SDF value transforms
+    midpointAdjustment      float       Baked midpoint adjustment, if flagged
+    type                    uint8_t     SDFType enumeration value
+    distType                uint8_t     DistanceType enumeration value
+    imageFormat             char[8]     Null-terminated image format
+    mipmapCount             uint32_t    Number of encoded mipmap images
+    mipmaps                 Mipmap[mipmapCount]
+}
+
+Mipmap {
+    dataLength              uint32_t    Length of encoded image data
+    data                    uint8[]     Encoded image data
+}
+```
+
+`encodingFlags` uses these bits:
+
+- `0x00000001` = SDF values were inverted
+- `0x00000002` = SDF values were gamma corrected
+- `0x00000004` = downsampling used maximum values instead of averaging
+- `0x00000008` = `midpointAdjustment` contains a baked adjustment value
+
 ## Reading Algorithm
 
-1. Read `familyNameSize` (uint32_t, 4 bytes)
-2. Read font family name (familyNameSize bytes, UTF-8)
-3. Read font metadata:
+1. Read `version` (uint32_t, 4 bytes). Current supported value is `1`.
+2. Read `familyNameSize` (uint32_t, 4 bytes)
+3. Read font family name (familyNameSize bytes, UTF-8)
+4. Read font metadata:
    - `type` (uint8_t, 1 byte)
    - `distType` (uint8_t, 1 byte)
    - `bitmap_size` (uint32_t, 4 bytes)
@@ -173,10 +219,10 @@ If `valid == false`, only the boolean is written (1 byte). If `valid == true`, a
    - `maxAdvance` (float, 4 bytes)
    - `unitsPerEm` (uint32_t, 4 bytes)
    - `charCount` (uint32_t, 4 bytes)
-4. Read glyph TOC: `charCount` entries, each containing:
+5. Read glyph TOC: `charCount` entries, each containing:
    - `codePoint` (uint32_t, 4 bytes)
    - `offset` (uint32_t, 4 bytes)
-5. Read `KerningMap`:
+6. Read `KerningMap`:
    - Read size (uint32_t)
    - For each entry:
      - Read `firstChar` (uint32_t)
@@ -185,7 +231,7 @@ If `valid == false`, only the boolean is written (1 byte). If `valid == true`, a
        - For each entry:
          - Read `secondChar` (uint32_t)
          - Read `Vec2f` (2 × float, 8 bytes)
-6. For each glyph in TOC:
+7. For each glyph in TOC:
    - Seek to `offset` from start of file
    - Read `StoredCharacter`:
      - Read `valid` (bool, 1 byte)
@@ -196,15 +242,16 @@ If `valid == false`, only the boolean is written (1 byte). If `valid == true`, a
 
 ## Writing Algorithm
 
-1. Write font family name:
+1. Write `version` (uint32_t, 4 bytes). Current value is `1`.
+2. Write font family name:
    - Convert to UTF-8
    - Write length (uint32_t)
    - Write UTF-8 bytes
-2. Write font metadata (type, distType, sizes, flags, face metrics, charCount)
-3. Reserve space for TOC:
+3. Write font metadata (type, distType, sizes, flags, face metrics, charCount)
+4. Reserve space for TOC:
    - Record current position
    - Write `charCount` placeholder entries (all zeros, 8 bytes each)
-4. Write `KerningMap`:
+5. Write `KerningMap`:
    - Write size (uint32_t)
    - For each entry:
      - Write `firstChar` (uint32_t)
@@ -213,12 +260,12 @@ If `valid == false`, only the boolean is written (1 byte). If `valid == true`, a
        - For each entry:
          - Write `secondChar` (uint32_t)
          - Write `Vec2f` (2 × float)
-5. Write glyph data:
+6. Write glyph data:
    - For each glyph:
      - Record current position as glyph offset
      - Write `StoredCharacter` data
      - Store (codePoint, offset) mapping
-6. Write TOC:
+7. Write TOC:
    - Seek back to TOC position
    - Write all (codePoint, offset) pairs
 
@@ -227,6 +274,9 @@ If `valid == false`, only the boolean is written (1 byte). If `valid == true`, a
 ```python
 def read_font_file(file):
     # Read header
+    version = read_uint32_be(file)
+    if version != 1:
+        raise ValueError(f"Unsupported PreprocessedFontFace version: {version}")
     family_name_size = read_uint32_be(file)
     family_name = read_bytes(file, family_name_size).decode('utf-8')
     

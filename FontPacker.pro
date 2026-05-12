@@ -27,6 +27,7 @@ SOURCES += \
         SdfGenerationContextSoft.cpp \
         SdfGenerationGL.cpp \
         StoredCharacter.cpp \
+        StoredVectorImage.cpp \
         main.cpp
 
 # Default rules for deployment.
@@ -60,7 +61,8 @@ HEADERS += \
     SdfGenerationContext.hpp \
     SdfGenerationContextSoft.hpp \
     SdfGenerationGL.hpp \
-    StoredCharacter.hpp
+    StoredCharacter.hpp \
+    StoredVectorImage.hpp
 
 RESOURCES += \
     resources.qrc

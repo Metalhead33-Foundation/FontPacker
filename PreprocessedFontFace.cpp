@@ -25,11 +25,24 @@
 #include <cstdlib>
 #include <vector>
 #include <cmath>
+#include <stdexcept>
 #include <QBitArray>
 #include <QCborArray>
 
+namespace {
+
+void validatePreprocessedFontFaceVersion(uint32_t version)
+{
+	if(version == 0 || version > PreprocessedFontFace::CURRENT_VERSION) {
+		throw std::runtime_error("Unsupported PreprocessedFontFace format version.");
+	}
+}
+
+}
+
 void PreprocessedFontFace::toCbor(QCborMap& cbor) const
 {
+	cbor.insert(VERSION_KEY, version);
 	cbor.insert(FONT_NAME_KEY,fontFamilyName);
 	cbor.insert(TYPE_KEY, static_cast<unsigned>(type));
 	cbor.insert(DIST_KEY, static_cast<unsigned>(distType));
@@ -71,6 +84,8 @@ QCborMap PreprocessedFontFace::toCbor() const
 
 void PreprocessedFontFace::fromCbor(const QCborMap& cbor)
 {
+	this->version = static_cast<uint32_t>(cbor[VERSION_KEY].toInteger(CURRENT_VERSION));
+	validatePreprocessedFontFaceVersion(version);
 	this->fontFamilyName = cbor[FONT_NAME_KEY].toString();
 	this->type = static_cast<SDFType>(cbor[TYPE_KEY].toInteger());
 	this->distType = static_cast<DistanceType>(cbor[DIST_KEY].toInteger());
@@ -107,6 +122,7 @@ void PreprocessedFontFace::fromCbor(const QCborMap& cbor)
 void PreprocessedFontFace::toData(QDataStream& dataStream) const
 {
 	QByteArray utf8str = this->fontFamilyName.toUtf8();
+	dataStream << version;
 	dataStream << static_cast<uint32_t>(utf8str.size());
 	dataStream.writeRawData(utf8str.data(),utf8str.length());
 	dataStream << static_cast<uint8_t>(type) << static_cast<uint8_t>(distType) << bitmap_size << bitmap_logical_size << bitmap_padding << hasVert;
@@ -133,6 +149,8 @@ void PreprocessedFontFace::toData(QDataStream& dataStream) const
 void PreprocessedFontFace::fromData(QDataStream& dataStream)
 {
 	{
+		dataStream >> version;
+		validatePreprocessedFontFaceVersion(version);
 		uint32_t familyNameSize;
 		dataStream >> familyNameSize;
 		QByteArray familyNameUtf8(familyNameSize, 0);

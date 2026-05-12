@@ -73,6 +73,9 @@ QDataStream &operator>>(QDataStream &stream, KerningMap &processedFontFace);
  * See BINARY_FORMAT.md for the binary format specification.
  */
 struct PreprocessedFontFace {
+	static constexpr uint32_t CURRENT_VERSION = 1;
+
+	uint32_t version = CURRENT_VERSION;             ///< PreprocessedFontFace serialization format version.
 	QString fontFamilyName;                    ///< Font family name (UTF-8)
 	SDFType type;                              ///< Type of signed distance field (SDF, MSDF, MSDFA)
 	DistanceType distType;                     ///< Distance calculation method (Manhattan or Euclidean)

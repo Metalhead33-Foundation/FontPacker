@@ -15,6 +15,7 @@
 #include <QString>
 
 extern const QString VALID_KEY;
+extern const QString VERSION_KEY;
 extern const QString WIDTH_KEY;
 extern const QString HEIGHT_KEY;
 extern const QString BEARING_X_KEY;

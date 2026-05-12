@@ -1,6 +1,7 @@
 #include "ConstStrings.hpp"
 
 const QString VALID_KEY = QStringLiteral("valid");
+const QString VERSION_KEY = QStringLiteral("version");
 const QString WIDTH_KEY = QStringLiteral("width");
 const QString HEIGHT_KEY = QStringLiteral("height");
 const QString BEARING_X_KEY = QStringLiteral("bearing_x");
