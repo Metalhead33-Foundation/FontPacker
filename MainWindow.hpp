@@ -14,6 +14,7 @@
 #include <QMainWindow>
 #include "ConstStrings.hpp"
 #include "PreprocessedFontFace.hpp"
+#include "StoredVectorImage.hpp"
 #include <memory>
 #include <vector>
 #include "CQTOpenGLLuaSyntaxHighlighter.hpp"
@@ -47,6 +48,7 @@ public:
 signals:
 	void changeState(int newState);
 	void fontHasBeenLoaded();
+	void vecetorHasBeenLoaded();
 
 private slots:
 
@@ -62,6 +64,7 @@ private slots:
 
 	void onStateChange(int newState);
 	void onFontHasBeenLoaded();
+	void onVectorHasBeenLoaded();
 
 	void on_selectGlyphArrowLeft2_clicked();
 
@@ -94,6 +97,7 @@ private:
 	Ui::MainWindow *ui;
 	MainWindowState state = INITIAL;
 	std::unique_ptr<PreprocessedFontFace> font_face;
+	std::unique_ptr<StoredVectorImage> vector_face;
 	void loadCborFont(const QString& filepath);
 	void loadBinFont(const QString& filepath);
 	QColor clr;

@@ -3,6 +3,16 @@
 #include <QFileDialog>
 #include <QFile>
 #include <QMessageBox>
+#include <stdexcept>
+
+namespace {
+
+QByteArray magicBytes(const std::array<char,4>& magic)
+{
+	return QByteArray(magic.data(), static_cast<qsizetype>(magic.size()));
+}
+
+}
 
 MainWindow::MainWindow(QWidget *parent)
 	: QMainWindow(parent)
@@ -10,6 +20,7 @@ MainWindow::MainWindow(QWidget *parent)
 {
 	connect(this,&MainWindow::changeState,this,&MainWindow::onStateChange);
 	connect(this,&MainWindow::fontHasBeenLoaded,this,&MainWindow::onFontHasBeenLoaded);
+	connect(this,&MainWindow::vecetorHasBeenLoaded,this,&MainWindow::onVectorHasBeenLoaded);
 	ui->setupUi(this);
 	highlighter = new argos::CQTOpenGLLuaSyntaxHighlighter(ui->glslEditor->document(), false);
 	emit changeState(MainWindowState::INITIAL);
@@ -23,7 +34,7 @@ MainWindow::~MainWindow()
 
 void MainWindow::on_loadPathBtn_clicked()
 {
-	ui->loadPathEdit->setText(QFileDialog::getOpenFileName(this, tr("Open file"), QString(), tr("Font files (*.ttf *.otf);;WOD font files (*.wodf);;Binary files (*.bin);;CBOR files (*.cbor);;")));
+	ui->loadPathEdit->setText(QFileDialog::getOpenFileName(this, tr("Open file"), QString(), tr("Font files (*.ttf *.otf);;WOD binary files (*.wodf *.wodi);;Binary files (*.bin);;CBOR files (*.cbor *.vcbor);;")));
 }
 
 
@@ -48,14 +59,14 @@ void MainWindow::on_savePathEdit_textChanged(const QString &arg1)
 void MainWindow::on_loadBtn_clicked()
 {
 	QString loadPath = ui->loadPathEdit->text();
-	if(loadPath.endsWith(QStringLiteral(".cbor"))) {
+	if(loadPath.endsWith(QStringLiteral(".cbor"), Qt::CaseInsensitive) || loadPath.endsWith(QStringLiteral(".vcbor"), Qt::CaseInsensitive)) {
 		try {
 			loadCborFont(loadPath);
 		} catch(std::exception& exp) {
 			QMessageBox::critical(this, QStringLiteral("Error!"), QString::fromUtf8(exp.what()));
 		}
 	}
-	if(loadPath.endsWith(QStringLiteral(".wodf")) || loadPath.endsWith(QStringLiteral(".bin"))) {
+	else if(loadPath.endsWith(QStringLiteral(".wodf"), Qt::CaseInsensitive) || loadPath.endsWith(QStringLiteral(".wodi"), Qt::CaseInsensitive) || loadPath.endsWith(QStringLiteral(".bin"), Qt::CaseInsensitive)) {
 		try {
 			loadBinFont(loadPath);
 		} catch(std::exception& exp) {
@@ -97,8 +108,26 @@ void MainWindow::onStateChange(int newState)
 void MainWindow::onFontHasBeenLoaded()
 {
 	glyphsVector.clear();
+	ui->selectGlyphComboBox1->clear();
+	ui->selectGlyphComboBox2->clear();
 	for(auto it = std::begin(font_face->storedCharacters); it != std::end(font_face->storedCharacters); ++it) {
 		glyphsVector.push_back(it.key());
+	}
+	for(const auto it : glyphsVector) {
+		ui->selectGlyphComboBox1->addItem(QString::number(it), it);
+		ui->selectGlyphComboBox2->addItem(QString::number(it), it);
+	}
+	emit changeState(MainWindowState::PREPROCESSED_FONT_LAODED);
+}
+
+void MainWindow::onVectorHasBeenLoaded()
+{
+	glyphsVector.clear();
+	ui->selectGlyphComboBox1->clear();
+	ui->selectGlyphComboBox2->clear();
+	int i = 0;
+	for(auto it = std::begin(vector_face->mipmaps); it != std::end(vector_face->mipmaps); ++it) {
+		glyphsVector.push_back(i++);
 	}
 	for(const auto it : glyphsVector) {
 		ui->selectGlyphComboBox1->addItem(QString::number(it), it);
@@ -115,9 +144,26 @@ void MainWindow::loadCborFont(const QString& filepath)
 	}
 	QCborValue cborv = QCborValue::fromCbor(fil.readAll());
 	fil.close();
-	this->font_face = std::make_unique<PreprocessedFontFace>();
-	font_face->fromCbor(cborv.toMap());
-	emit fontHasBeenLoaded();
+	const QCborMap cbor = cborv.toMap();
+	const QString containerType = cbor[CBOR_CONTAINER_TYPE_KEY].toString();
+	if(containerType == CBOR_STORED_VECTOR_IMAGE_TYPE) {
+		this->vector_face = std::make_unique<StoredVectorImage>();
+		vector_face->fromCbor(cbor);
+		this->font_face.reset();
+		glyphsVector.clear();
+		ui->selectGlyphComboBox1->clear();
+		ui->selectGlyphComboBox2->clear();
+		emit vecetorHasBeenLoaded();
+		return;
+	}
+	if(containerType.isEmpty() || containerType == CBOR_PREPROCESSED_FONT_FACE_TYPE) {
+		this->font_face = std::make_unique<PreprocessedFontFace>();
+		font_face->fromCbor(cbor);
+		this->vector_face.reset();
+		emit fontHasBeenLoaded();
+		return;
+	}
+	throw std::runtime_error(QStringLiteral("Unsupported CBOR container type: %1").arg(containerType).toStdString());
 }
 
 void MainWindow::loadBinFont(const QString& filepath)
@@ -126,12 +172,28 @@ void MainWindow::loadBinFont(const QString& filepath)
 	if(!fil.open(QFile::ReadOnly)) {
 		throw std::runtime_error("Failed to open file for reading!");
 	}
+	const QByteArray magic = fil.peek(static_cast<qint64>(PreprocessedFontFace::BINARY_MAGIC.size()));
 	QDataStream binF(&fil);
 	binF.setVersion(QDataStream::Qt_4_0);
 	binF.setByteOrder(QDataStream::BigEndian);
-	this->font_face = std::make_unique<PreprocessedFontFace>();
-	font_face->fromData(binF);
-	emit fontHasBeenLoaded();
+	if(magic == magicBytes(PreprocessedFontFace::BINARY_MAGIC)) {
+		this->font_face = std::make_unique<PreprocessedFontFace>();
+		font_face->fromData(binF);
+		this->vector_face.reset();
+		emit fontHasBeenLoaded();
+		return;
+	}
+	if(magic == magicBytes(StoredVectorImage::BINARY_MAGIC)) {
+		this->vector_face = std::make_unique<StoredVectorImage>();
+		vector_face->fromData(binF);
+		this->font_face.reset();
+		glyphsVector.clear();
+		ui->selectGlyphComboBox1->clear();
+		ui->selectGlyphComboBox2->clear();
+		emit vecetorHasBeenLoaded();
+		return;
+	}
+	throw std::runtime_error("Unsupported binary container magic.");
 }
 
 /*
@@ -177,6 +239,9 @@ void MainWindow::on_selectGlyphComboBox2_currentIndexChanged(int index)
 		if( it != std::end(font_face->storedCharacters)) {
 			ui->glyphShowLabel->setPixmap( QPixmap::fromImage( QImage::fromData( it.value().sdf ) ) );
 		}
+	} else if ( vector_face != nullptr && index >= 0 )
+	{
+		ui->glyphShowLabel->setPixmap( QPixmap::fromImage( QImage::fromData( vector_face->mipmaps[index] ) ) );
 	}
 }
 
@@ -186,9 +251,14 @@ void MainWindow::on_selectGlyphComboBox1_currentIndexChanged(int index)
 	ui->selectGlyphArrowLeft1->setEnabled( ui->selectGlyphComboBox1->currentIndex() > 0);
 	ui->selectGlyphArrowRight1->setEnabled( ui->selectGlyphComboBox1->currentIndex() < (ui->selectGlyphComboBox1->count()-1)  );
 	if(index >= 0) {
+		if(font_face) {
 		auto it = font_face->storedCharacters.find(glyphsVector[index]);
 		if( it != std::end(font_face->storedCharacters)) {
 			ui->openGLWidget->addTexture(QImage::fromData(it->sdf));
+			repaintGl();
+		}
+		} else if(vector_face) {
+			ui->openGLWidget->addTexture(QImage::fromData(vector_face->mipmaps[index]));
 			repaintGl();
 		}
 	}
