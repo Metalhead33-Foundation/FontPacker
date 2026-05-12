@@ -2,6 +2,9 @@
 
 const QString VALID_KEY = QStringLiteral("valid");
 const QString VERSION_KEY = QStringLiteral("version");
+const QString CBOR_CONTAINER_TYPE_KEY = QStringLiteral("containerType");
+const QString CBOR_PREPROCESSED_FONT_FACE_TYPE = QStringLiteral("PreprocessedFontFace");
+const QString CBOR_STORED_VECTOR_IMAGE_TYPE = QStringLiteral("StoredVectorImage");
 const QString WIDTH_KEY = QStringLiteral("width");
 const QString HEIGHT_KEY = QStringLiteral("height");
 const QString BEARING_X_KEY = QStringLiteral("bearing_x");

@@ -234,6 +234,8 @@ fontpacker --nogui --inbin input.wodf \
 
 For detailed information about the binary output format, see [BINARY_FORMAT.md](BINARY_FORMAT.md).
 
+CBOR font and standalone vector-image files include a `containerType` field with either `PreprocessedFontFace` or `StoredVectorImage`. The existing `type` field is still the SDF flavor (`SDF`, `MSDF`, or `MSDFA`) rather than the container discriminator.
+
 ## Building
 
 See the project's build system documentation for compilation instructions.

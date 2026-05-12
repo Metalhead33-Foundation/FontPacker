@@ -46,10 +46,18 @@ void validatePreprocessedFontFaceMagic(QDataStream& dataStream)
 	}
 }
 
+void validatePreprocessedFontFaceCborType(const QCborMap& cbor)
+{
+	if(cbor.contains(CBOR_CONTAINER_TYPE_KEY) && cbor[CBOR_CONTAINER_TYPE_KEY].toString() != CBOR_PREPROCESSED_FONT_FACE_TYPE) {
+		throw std::runtime_error("Invalid PreprocessedFontFace CBOR container type.");
+	}
+}
+
 }
 
 void PreprocessedFontFace::toCbor(QCborMap& cbor) const
 {
+	cbor.insert(CBOR_CONTAINER_TYPE_KEY, CBOR_PREPROCESSED_FONT_FACE_TYPE);
 	cbor.insert(VERSION_KEY, version);
 	cbor.insert(FONT_NAME_KEY,fontFamilyName);
 	cbor.insert(TYPE_KEY, static_cast<unsigned>(type));
@@ -92,6 +100,7 @@ QCborMap PreprocessedFontFace::toCbor() const
 
 void PreprocessedFontFace::fromCbor(const QCborMap& cbor)
 {
+	validatePreprocessedFontFaceCborType(cbor);
 	this->version = static_cast<uint32_t>(cbor[VERSION_KEY].toInteger(CURRENT_VERSION));
 	validatePreprocessedFontFaceVersion(version);
 	this->fontFamilyName = cbor[FONT_NAME_KEY].toString();

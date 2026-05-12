@@ -38,10 +38,18 @@ void validateStoredVectorImageMagic(QDataStream& dataStream)
 	}
 }
 
+void validateStoredVectorImageCborType(const QCborMap& cbor)
+{
+	if(cbor.contains(CBOR_CONTAINER_TYPE_KEY) && cbor[CBOR_CONTAINER_TYPE_KEY].toString() != CBOR_STORED_VECTOR_IMAGE_TYPE) {
+		throw std::runtime_error("Invalid StoredVectorImage CBOR container type.");
+	}
+}
+
 }
 
 void StoredVectorImage::toCbor(QCborMap& cbor) const
 {
+	cbor.insert(CBOR_CONTAINER_TYPE_KEY, CBOR_STORED_VECTOR_IMAGE_TYPE);
 	cbor.insert(VERSION_KEY, version);
 	cbor.insert(VECTOR_PROCESSING_SIZE_KEY, processingSize);
 	cbor.insert(VECTOR_ACTUAL_SIZE_KEY, actualSize);
@@ -79,6 +87,7 @@ QCborMap StoredVectorImage::toCbor() const
 
 void StoredVectorImage::fromCbor(const QCborMap& cbor)
 {
+	validateStoredVectorImageCborType(cbor);
 	this->version = static_cast<uint32_t>(cbor[VERSION_KEY].toInteger(CURRENT_VERSION));
 	validateStoredVectorImageVersion(version);
 	this->processingSize = static_cast<uint32_t>(cbor[VECTOR_PROCESSING_SIZE_KEY].toInteger(0));

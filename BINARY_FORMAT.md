@@ -8,6 +8,8 @@ Font binary files use the `.wodf` extension and begin with the ASCII magic `WODF
 
 Standalone vector-image binary files use the `.wodi` extension and begin with the ASCII magic `WODI`.
 
+The equivalent CBOR maps include a `containerType` string. Font CBOR uses `PreprocessedFontFace`; standalone vector-image CBOR uses `StoredVectorImage`. The CBOR `type` field remains the SDF flavor field.
+
 ## Data Types and Endianness
 
 - **Byte Order**: Big-Endian (network byte order)

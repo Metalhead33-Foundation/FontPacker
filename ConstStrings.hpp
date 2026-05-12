@@ -16,6 +16,9 @@
 
 extern const QString VALID_KEY;
 extern const QString VERSION_KEY;
+extern const QString CBOR_CONTAINER_TYPE_KEY;
+extern const QString CBOR_PREPROCESSED_FONT_FACE_TYPE;
+extern const QString CBOR_STORED_VECTOR_IMAGE_TYPE;
 extern const QString WIDTH_KEY;
 extern const QString HEIGHT_KEY;
 extern const QString BEARING_X_KEY;
