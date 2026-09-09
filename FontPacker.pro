@@ -22,6 +22,7 @@ SOURCES += \
         MainWindow.cpp \
         OpenGLCanvas.cpp \
         PreprocessedFontFace.cpp \
+        QDataStreamHelper.cpp \
         SDFGenerationArguments.cpp \
         SdfGenerationContext.cpp \
         SdfGenerationContextSoft.cpp \
@@ -37,6 +38,7 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 
 DISTFILES += \
     .gitignore \
+    BINARY_FORMAT.md \
     LICENSE \
     README.md \
     msdf_fixer.glsl \
@@ -56,6 +58,7 @@ HEADERS += \
     Mallocator.hpp \
     OpenGLCanvas.hpp \
     PreprocessedFontFace.hpp \
+    QDataStreamHelper.hpp \
     RGBA8888.hpp \
     SDFGenerationArguments.hpp \
     SdfGenerationContext.hpp \

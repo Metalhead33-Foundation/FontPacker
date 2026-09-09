@@ -23,7 +23,7 @@ The equivalent CBOR maps include a `containerType` string. Font CBOR uses `Prepr
 - **Boolean**: 
   - `bool`: 1 byte (0x00 = false, 0x01 = true)
 - **Strings**: 
-  - UTF-8 encoded byte arrays with length prefix
+  - UTF-8 encoded byte arrays with length prefix. Includes a null terminator.
 - **Fixed strings**:
   - `char[4]`: Raw ASCII magic identifier, not null-terminated
   - `char[8]`: Null-terminated ASCII string, padded with zeros
@@ -64,8 +64,8 @@ Offset  Field                    Type        Description
 ------  ----------------------  ----------  -----------------------------------------
 0       magic                   char[4]     ASCII magic "WODF"
 4       version                 uint32_t    PreprocessedFontFace format version
-8       familyNameSize          uint32_t    Length of font family name in bytes
-12      familyName              uint8[]     UTF-8 encoded font family name (familyNameSize bytes)
+8       familyNameSize          uint32_t    Length of font family name in bytes (includes null terminator)
+12      familyName              uint8[]     UTF-8 encoded font family name (familyNameSize bytes, includes null terminator)
 12+N    type                    uint8_t     SDFType enumeration value
 12+N+1  distType                uint8_t     DistanceType enumeration value
 12+N+2  bitmap_size             uint32_t    Bitmap size in pixels
@@ -223,8 +223,8 @@ Mipmap {
 
 1. Read `magic` (char[4], 4 bytes). For font files this must be `WODF`.
 2. Read `version` (uint32_t, 4 bytes). Current supported value is `1`.
-3. Read `familyNameSize` (uint32_t, 4 bytes)
-4. Read font family name (familyNameSize bytes, UTF-8)
+3. Read `familyNameSize` (uint32_t, 4 bytes, includes null terminator)
+4. Read font family name (familyNameSize bytes, UTF-8, includes null terminator)
 5. Read font metadata:
    - `type` (uint8_t, 1 byte)
    - `distType` (uint8_t, 1 byte)
@@ -266,8 +266,8 @@ Mipmap {
 2. Write `version` (uint32_t, 4 bytes). Current value is `1`.
 3. Write font family name:
    - Convert to UTF-8
-   - Write length (uint32_t)
-   - Write UTF-8 bytes
+   - Write length (uint32_t), which is 1 at minimum (because it includes the null terminator)
+   - Write UTF-8 bytes (including the null terminator)
 4. Write font metadata (type, distType, sizes, flags, face metrics, charCount)
 5. Reserve space for TOC:
    - Record current position
@@ -321,8 +321,9 @@ def read_font_file(file):
     version = read_uint32_be(file)
     if version != 1:
         raise ValueError(f"Unsupported PreprocessedFontFace version: {version}")
-    family_name_size = read_uint32_be(file)
+    family_name_size = read_uint32_be(file) - 1
     family_name = read_bytes(file, family_name_size).decode('utf-8')
+    skip_byte(file)
     
     # Read metadata
     type = read_uint8(file)
@@ -411,6 +412,7 @@ def read_stored_character(file):
 - The SDF bitmap data format depends on the `imageFormat` field and `type` field
 - Empty glyphs (invalid) are stored as a single boolean `false` value
 - The kerning map structure allows for sparse storage of kerning pairs
+- Variable-length UTF-8 strings include the null terminator. This makes their minimal size 1 byte.
 
 ## Type Enumerations
 

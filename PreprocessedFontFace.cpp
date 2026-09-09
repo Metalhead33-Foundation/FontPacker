@@ -28,6 +28,7 @@
 #include <stdexcept>
 #include <QBitArray>
 #include <QCborArray>
+#include "QDataStreamHelper.hpp"
 
 namespace {
 
@@ -138,11 +139,9 @@ void PreprocessedFontFace::fromCbor(const QCborMap& cbor)
 
 void PreprocessedFontFace::toData(QDataStream& dataStream) const
 {
-	QByteArray utf8str = this->fontFamilyName.toUtf8();
 	dataStream.writeRawData(BINARY_MAGIC.data(), BINARY_MAGIC.size());
 	dataStream << version;
-	dataStream << static_cast<uint32_t>(utf8str.size());
-	dataStream.writeRawData(utf8str.data(),utf8str.length());
+	saveToDatastreamAsUtf8(dataStream, this->fontFamilyName);
 	dataStream << static_cast<uint8_t>(type) << static_cast<uint8_t>(distType) << bitmap_size << bitmap_logical_size << bitmap_padding << hasVert;
 	dataStream.writeRawData(imageFormat.data(), imageFormat.size());
 	dataStream << ascender << descender << faceHeight << maxAdvance << unitsPerEm << static_cast<uint32_t>(storedCharacters.size());
@@ -170,11 +169,7 @@ void PreprocessedFontFace::fromData(QDataStream& dataStream)
 		validatePreprocessedFontFaceMagic(dataStream);
 		dataStream >> version;
 		validatePreprocessedFontFaceVersion(version);
-		uint32_t familyNameSize;
-		dataStream >> familyNameSize;
-		QByteArray familyNameUtf8(familyNameSize, 0);
-		dataStream.readRawData(familyNameUtf8.data(),familyNameSize);
-		this->fontFamilyName = QString::fromUtf8(familyNameUtf8);
+		this->fontFamilyName = loadFromDatastreamAsUtf8(dataStream);
 	}
 	uint8_t tmpType, tmpDist;
 	uint32_t charCount;
