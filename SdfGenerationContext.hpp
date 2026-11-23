@@ -4,6 +4,21 @@
  * 
  * This class provides the interface and common functionality for SDF generation.
  * Implementations include software-based (CPU) and OpenGL compute shader-based (GPU) rendering.
+ *
+ * @section pipeline Where the serialized values come from
+ * - processFont() measures the face at FreeType em = `internalProcessSize - padding`,
+ *   fills PreprocessedFontFace::ascender/descender/faceHeight/maxAdvance and copies
+ *   the per-glyph metrics into StoredCharacter before any stretching happens.
+ *   For outline glyphs, the later fit step overwrites four of the float metric
+ *   fields with the outline bounds; see StoredCharacter's warning.
+ * - processOutlineGlyph() / processBitmapGlyph() fill one StoredCharacter and then
+ *   call processOutlineGlyphEnd(), which stretches the glyph into the
+ *   `(L - 2P)` content box, evaluates the SDF, downsamples to `intendedSize` and
+ *   encodes the image with the requested codec.
+ * - The three bitmap_logical_size / bitmap_size / bitmap_padding fields are
+ *   assigned directly from internalProcessSize / intendedSize / padding; they are
+ *   not derived from the image afterwards.
+ * See BINARY_FORMAT.md for the byte layout and the geometry formulas.
  */
 
 #ifndef SDFGENERATIONCONTEXT_HPP
@@ -110,24 +125,51 @@ public:
 	
 	/**
 	 * @brief Process an entire font file and generate glyphs.
+	 *
+	 * Opens the face, sets the FreeType pixel size to `args.internalProcessSize -
+	 * args.padding`, reads the face metrics, generates every glyph in
+	 * `[args.char_min, args.char_max)` that the face covers, and builds the sparse
+	 * kerning map for those code points. Glyphs with outlines use the vector path
+	 * unless `args.forceRaster` is set; glyphs without outlines always use the
+	 * bitmap path.
+	 *
+	 * Writes `bitmap_logical_size = internalProcessSize`,
+	 * `bitmap_size = intendedSize` (which may be 0, meaning "same as logical"),
+	 * `bitmap_padding = padding`, plus `type`, `distType`, `imageFormat`,
+	 * `hasVert`, `unitsPerEm` and the family name.
 	 * @param output Preprocessed font face to populate.
 	 * @param args Generation arguments.
+	 * @throws std::runtime_error if the font cannot be opened or configured, or if glyph generation fails.
 	 */
 	void processFont(PreprocessedFontFace& output, const SDFGenerationArguments& args);
 	
 	/**
-	 * @brief Process an SVG file and generate glyphs.
+	 * @brief Process an SVG file and generate glyph entries in a font face.
+	 *
+	 * The SVG viewport becomes the face metrics: `ascender`, `faceHeight` and
+	 * `unitsPerEm` are set to the viewport height, `maxAdvance` to the viewport
+	 * width and `descender` to 0, and each glyph's `width`/`height` are the
+	 * viewport size. `hasVert` is always false. Use this overload with `--outbin`,
+	 * `--outcbor` or `--outfont`.
 	 * @param output Preprocessed font face to populate.
 	 * @param buff SVG file data.
 	 * @param args Generation arguments.
+	 * @throws std::runtime_error if the SVG cannot be parsed or contains no paths.
 	 */
 	void processSvg(PreprocessedFontFace& output, const QByteArray& buff, const SDFGenerationArguments& args);
 
 	/**
-	 * @brief Process an SVG file and generate a stored vector image.
+	 * @brief Process an SVG file and generate a standalone vector image.
+	 *
+	 * Fills `processingSize`, `actualSize`, `padding`, the logical rectangle,
+	 * the source bounds, the distance ranges, the encoding flags and the mip
+	 * chain. `SeparateShapes` is rejected for this output type because the
+	 * container describes exactly one graphic. Use this overload with
+	 * `--outvectorbin` or `--outvectorcbor`.
 	 * @param output Preprocessed vector image to populate.
 	 * @param buff SVG file data.
 	 * @param args Generation arguments.
+	 * @throws std::runtime_error if the SVG cannot be parsed, has no paths, or requests separate shapes.
 	 */
 	void processSvg(StoredVectorImage& output, const QByteArray& buff, const SDFGenerationArguments& args);
 	

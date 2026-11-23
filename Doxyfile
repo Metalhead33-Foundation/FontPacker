@@ -1,0 +1,194 @@
+# Doxygen configuration for FontPacker.
+#
+# The headers are the API reference, and README.md is the front page. The two
+# Markdown documents in the same folder explain the package pipeline and the
+# byte format; Doxygen renders them as pages next to the class reference.
+#
+# Render into the (git-ignored) build tree, never into the source tree:
+#
+#     git submodule update --init --recursive   # doxygen-awesome-css theme
+#     doxygen Doxyfile
+#     $BROWSER build/doxygen/html/index.html
+#
+# The header comments are written in Doxygen's Qt dialect (`/** ... */`,
+# `///`, `///<`, `\brief`, `\param`, ...). QT_AUTOBRIEF is therefore enabled:
+# the first sentence of a block becomes the brief description.
+#
+# WARN_IF_UNDOCUMENTED / WARN_NO_PARAMDOC are enabled so that a new public type
+# or member without a doc block shows up as a warning. WARN_AS_ERROR stays NO:
+# the CI workflow annotates warnings instead of failing the build.
+
+DOXYFILE_ENCODING      = UTF-8
+PROJECT_NAME           = "FontPacker"
+PROJECT_NUMBER         =
+PROJECT_BRIEF          = "Offline SDF/MSDF packer for fonts and SVG"
+PROJECT_LOGO           =
+OUTPUT_DIRECTORY       = build/doxygen
+CREATE_SUBDIRS         = NO
+OUTPUT_LANGUAGE        = English
+
+BRIEF_MEMBER_DESC      = YES
+REPEAT_BRIEF           = YES
+ALWAYS_DETAILED_SEC    = NO
+INLINE_INHERITED_MEMB  = NO
+FULL_PATH_NAMES        = YES
+STRIP_FROM_PATH        = .
+STRIP_FROM_INC_PATH    =
+SHORT_NAMES            = NO
+
+# The code base uses Qt-style comments everywhere. `//!` and `/*!` also open a
+# doc block; the first sentence is the brief.
+JAVADOC_AUTOBRIEF      = NO
+QT_AUTOBRIEF           = YES
+MULTILINE_CPP_IS_BRIEF = NO
+INHERIT_DOCS           = YES
+SEPARATE_MEMBER_PAGES  = NO
+TAB_SIZE               = 4
+ALIASES                =
+
+OPTIMIZE_OUTPUT_FOR_C  = NO
+OPTIMIZE_OUTPUT_JAVA   = NO
+OPTIMIZE_FOR_FORTRAN   = NO
+OPTIMIZE_OUTPUT_VHDL   = NO
+EXTENSION_MAPPING      =
+MARKDOWN_SUPPORT       = YES
+TOC_INCLUDE_HEADINGS   = 2
+AUTOLINK_SUPPORT       = YES
+BUILTIN_STL_SUPPORT    = YES
+CPP_CLI_SUPPORT        = NO
+SIP_SUPPORT            = NO
+IDL_PROPERTY_SUPPORT   = YES
+DISTRIBUTE_GROUP_DOC   = NO
+GROUP_NESTED_COMPOUNDS = NO
+SUBGROUPING            = YES
+INLINE_GROUPED_CLASSES = NO
+INLINE_SIMPLE_STRUCTS  = NO
+TYPEDEF_HIDES_STRUCT   = NO
+LOOKUP_CACHE_SIZE      = 0
+NUM_PROC_THREADS       = 1
+
+# Every declaration in the headers carries a doc block, so `EXTRACT_ALL = NO`
+# renders exactly the documented API and lets WARN_IF_UNDOCUMENTED /
+# WARN_NO_PARAMDOC catch a new undocumented member (with EXTRACT_ALL = YES
+# Doxygen suppresses those warnings). The two Markdown files are the narrative
+# documentation.
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = YES
+EXTRACT_PACKAGE        = NO
+EXTRACT_STATIC         = YES
+EXTRACT_LOCAL_CLASSES  = YES
+EXTRACT_LOCAL_METHODS  = NO
+EXTRACT_ANON_NSPACES   = NO
+HIDE_UNDOC_MEMBERS     = NO
+HIDE_UNDOC_CLASSES     = NO
+HIDE_FRIEND_COMPOUNDS  = NO
+HIDE_IN_BODY_DOCS      = NO
+INTERNAL_DOCS          = NO
+CASE_SENSE_NAMES       = YES
+HIDE_SCOPE_NAMES       = NO
+SHOW_INCLUDE_FILES     = YES
+SHOW_GROUPED_MEMB_INC  = NO
+FORCE_LOCAL_INCLUDES   = NO
+INLINE_INFO            = YES
+SORT_MEMBER_DOCS       = NO
+SORT_BRIEF_DOCS        = NO
+SORT_MEMBERS_CTORS_1ST = NO
+SORT_GROUP_NAMES       = NO
+SORT_BY_SCOPE_NAME     = NO
+STRICT_PROTO_MATCHING  = NO
+GENERATE_TODOLIST      = YES
+GENERATE_TESTLIST      = YES
+GENERATE_BUGLIST       = YES
+GENERATE_DEPRECATEDLIST= YES
+ENABLED_SECTIONS       =
+MAX_INITIALIZER_LINES  = 30
+SHOW_USED_FILES        = YES
+SHOW_FILES             = YES
+SHOW_NAMESPACES        = YES
+FILE_VERSION_FILTER    =
+LAYOUT_FILE            =
+CITE_BIB_FILES         =
+
+# Docs and headers only: the .cpp files contain implementation detail, and the
+# shaders are documented through the headers and the Markdown pages. The
+# theme submodule and the shadow build tree are out of scope.
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = YES
+WARN_AS_ERROR          = NO
+WARN_FORMAT            = "$file:$line: $text"
+WARN_LOGFILE           =
+
+INPUT                  = .
+INPUT_ENCODING         = UTF-8
+FILE_PATTERNS          = *.hpp *.md
+RECURSIVE              = YES
+EXCLUDE                = build doxygen-awesome-css .git .github
+EXCLUDE_SYMLINKS       = NO
+EXCLUDE_PATTERNS       = */build/* */doxygen-awesome-css/* */.git/*
+EXCLUDE_SYMBOLS        =
+EXAMPLE_PATH           =
+EXAMPLE_PATTERNS       = *
+EXAMPLE_RECURSIVE      = NO
+IMAGE_PATH             =
+INPUT_FILTER           =
+FILTER_PATTERNS        =
+FILTER_SOURCE_FILES    = NO
+USE_MDFILE_AS_MAINPAGE = README.md
+
+SOURCE_BROWSER         = NO
+INLINE_SOURCES         = NO
+STRIP_CODE_COMMENTS    = YES
+REFERENCED_BY_RELATION = NO
+REFERENCES_RELATION    = NO
+REFERENCES_LINK_SOURCE = YES
+SOURCE_TOOLTIPS        = YES
+USE_HTAGS              = NO
+VERBATIM_HEADERS       = YES
+
+ALPHABETICAL_INDEX     = YES
+IGNORE_PREFIX          =
+
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+HTML_FILE_EXTENSION    = .html
+HTML_HEADER            =
+HTML_FOOTER            =
+HTML_STYLESHEET        =
+# The theme requires the base CSS plus the sidebar-only variant, and
+# HTML_COLORSTYLE = LIGHT (doxygen-awesome-css >= 2.x).
+HTML_EXTRA_STYLESHEET  = doxygen-awesome-css/doxygen-awesome.css \
+                         doxygen-awesome-css/doxygen-awesome-sidebar-only.css
+HTML_EXTRA_FILES       =
+HTML_COLORSTYLE        = LIGHT
+HTML_DYNAMIC_SECTIONS  = NO
+HTML_INDEX_NUM_ENTRIES = 100
+GENERATE_DOCSET        = NO
+GENERATE_HTMLHELP      = NO
+GENERATE_QHP           = NO
+GENERATE_ECLIPSEHELP   = NO
+DISABLE_INDEX          = NO
+GENERATE_TREEVIEW      = YES
+FULL_SIDEBAR           = NO
+ENUM_VALUES_PER_LINE   = 4
+TREEVIEW_WIDTH         = 250
+EXT_LINKS_IN_WINDOW    = NO
+OBFUSCATE_EMAILS       = YES
+FORMULA_FONTSIZE       = 10
+SEARCHENGINE           = YES
+SERVER_BASED_SEARCH    = NO
+EXTERNAL_SEARCH        = NO
+
+GENERATE_LATEX         = NO
+GENERATE_RTF           = NO
+GENERATE_MAN           = NO
+GENERATE_XML           = NO
+GENERATE_DOCBOOK       = NO
+GENERATE_AUTOGEN_DEF   = NO
+GENERATE_PERLMOD       = NO
+
+HAVE_DOT               = NO
+
+GENERATE_TAGFILE       =

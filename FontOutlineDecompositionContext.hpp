@@ -4,6 +4,15 @@
  * 
  * Provides functionality for converting FreeType font outlines and SVG paths
  * into edge segments (lines, quadratic and cubic Bezier curves) for SDF generation.
+ *
+ * @section normalization Normalization to the SDF grid
+ * The generator never evaluates the distance field in font units. The edges are
+ * first mapped into a padded square by translateToNewSize(); for fonts the
+ * mapping is derived from the FreeType metrics (see the metric overload), and
+ * the result is an anisotropic stretch that fills the `(L - 2P)` content box.
+ * The stored StoredCharacter::width/height values are what restore the real
+ * aspect ratio at runtime. BINARY_FORMAT.md explains the geometry and the
+ * padding-vs-size relationship in detail.
  */
 
 #ifndef FONTOUTLINEDECOMPOSITIONCONTEXT_HPP
@@ -238,11 +247,14 @@ bool isPointInContour(const glm::fvec2& point, const std::vector<EdgeSegment>& e
 bool isContourInContour(const std::span<const EdgeSegment>& innerContour, const std::vector<EdgeSegment>& allEdges, int32_t outerContourId, int samplesPerEdge = 5);
 
 /**
- * @brief Bounding box structure.
+ * @brief Axis-aligned bounding box in the current edge coordinate space.
  * @struct BoundingBox
  */
 struct BoundingBox {
-	float top, bottom, left, right;  ///< Bounding box boundaries
+	float top;    ///< Smallest Y value (top edge in a Y-up space).
+	float bottom; ///< Largest Y value (bottom edge in a Y-up space).
+	float left;   ///< Smallest X value.
+	float right;  ///< Largest X value.
 };
 
 /**
@@ -314,41 +326,78 @@ struct FontOutlineDecompositionContext {
 	int cubicTo(const glm::fvec2& control1, const glm::fvec2& control2, const glm::fvec2& to);
 	
 	/**
-	 * @brief Translate and scale edges to a new size.
-	 * @param nWidth New width.
-	 * @param nHeight New height.
-	 * @param paddingX Horizontal padding.
-	 * @param paddingY Vertical padding.
-	 * @param invertY Whether to invert Y coordinates (default: true).
+	 * @brief Fit the edges into a padded rectangle using their own bounds.
+	 *
+	 * The bounding box of all active control points is shifted to the origin,
+	 * scaled independently on X and Y to `(nWidth - 2 * paddingX) x
+	 * (nHeight - 2 * paddingY)`, and offset by the padding. The result is a
+	 * deliberately **anisotropic** mapping: the outline fills the content box.
+	 * Y is then optionally flipped around `nHeight` for image storage.
+	 * @param nWidth Target width in pixels (padding included).
+	 * @param nHeight Target height in pixels (padding included).
+	 * @param paddingX Horizontal padding inside nWidth.
+	 * @param paddingY Vertical padding inside nHeight.
+	 * @param invertY Flip Y so row 0 is the top of the outline (default: true).
 	 */
 	void translateToNewSize(unsigned nWidth, unsigned nHeight, unsigned paddingX, unsigned paddingY, bool invertY = true);
 
 
 	/**
-	 * @brief Translate and scale edges to a new size.
-	 * @param nWidth New width.
-	 * @param nHeight New height.
-	 * @param paddingX Horizontal padding.
-	 * @param paddingY Vertical padding.
-	 * @param minX Output for recording the minimum X coordinate.
-	 * @param maxX Output for recording the maximum X coordinate.
-	 * @param minY Output for recording the minimum Y coordinate.
-	 * @param maxY Output for recording the maximum Y coordinate.
-	 * @param invertY Whether to invert Y coordinates (default: true).
+	 * @brief Fit the edges into a padded rectangle and report the source bounds.
+	 *
+	 * Same anisotropic mapping as the other overload, but the bounds of the
+	 * supplied edges are captured **before** the shift/scale and returned in
+	 * `minX`, `maxX`, `minY`, `maxY`. StoredVectorImage uses these values to
+	 * remember the source coordinate rectangle. Throws if the bounds are empty or
+	 * degenerate, or if the padding leaves no drawable area.
+	 * @param nWidth Target width in pixels (padding included).
+	 * @param nHeight Target height in pixels (padding included).
+	 * @param paddingX Horizontal padding inside nWidth.
+	 * @param paddingY Vertical padding inside nHeight.
+	 * @param minX Output: smallest source X before normalization.
+	 * @param maxX Output: largest source X before normalization.
+	 * @param minY Output: smallest source Y before normalization.
+	 * @param maxY Output: largest source Y before normalization.
+	 * @note The font and SVG generators currently bind to this overload even
+	 *       though they pass metric values, because the call site supplies
+	 *       `float` lvalues. Their `metricWidth`, `metricHeight`,
+	 *       `horiBearingX` and `horiBearingY` members therefore receive these
+	 *       four bounds. See BINARY_FORMAT.md, "Metric caveat".
+	 * @param invertY Flip Y so row 0 is the top of the outline (default: true).
 	 */
 	void translateToNewSize(unsigned nWidth, unsigned nHeight, unsigned paddingX, unsigned paddingY, float& minX, float& maxX, float& minY, float& maxY, bool invertY = true);
 	
 	/**
-	 * @brief Translate and scale edges to a new size with metrics.
-	 * @param nWidth New width.
-	 * @param nHeight New height.
-	 * @param paddingX Horizontal padding.
-	 * @param paddingY Vertical padding.
-	 * @param metricWidth Font metric width.
-	 * @param metricHeight Font metric height.
-	 * @param horiBearingX Horizontal bearing X.
-	 * @param horiBearingY Horizontal bearing Y.
-	 * @param invertY Whether to invert Y coordinates (default: true).
+	 * @brief Fit a glyph into a padded square using its FreeType metrics.
+	 *
+	 * This overload is the metric-based alternative to the bounds-capturing
+	 * version: instead of measuring the decomposed edges, it derives the source
+	 * box from the glyph metrics:
+	 *
+	 *     minDim = (horiBearingX, horiBearingY - metricHeight)
+	 *     scaleX = (nWidth  - 2 * paddingX) / metricWidth
+	 *     scaleY = (nHeight - 2 * paddingY) / metricHeight
+	 *     x_tex  = (x - minDim.x) * scaleX + paddingX
+	 *     y_tex  = ((y - minDim.y) * scaleY + paddingY)      // then flipped
+	 *
+	 * The X and Y scales differ unless the glyph box is square, which is what
+	 * maps every glyph onto the same square texture while preserving its
+	 * intended size in the stored metrics. The metrics must be in the same
+	 * pixel space as the target size (the generator uses FreeType at
+	 * `em = nWidth - paddingX`).
+	 * @param nWidth Target width in pixels (padding included).
+	 * @param nHeight Target height in pixels (padding included).
+	 * @param paddingX Horizontal padding inside nWidth.
+	 * @param paddingY Vertical padding inside nHeight.
+	 * @param metricWidth Glyph metric-box width in pixels (the X divisor).
+	 * @param metricHeight Glyph metric-box height in pixels (the Y divisor).
+	 * @param horiBearingX X bearing of the metric box, in pixels.
+	 * @param horiBearingY Y bearing (top above baseline) of the metric box, in pixels.
+	 * @param invertY Flip Y so row 0 is the top of the glyph (default: true).
+	 * @warning This overload is not reached by the current generator: the call
+	 *          site passes `float` lvalues (StoredCharacter members), so C++
+	 *          prefers the bounds-capturing `float&` overload. Kept for a future
+	 *          fix; see BINARY_FORMAT.md, "Metric caveat".
 	 */
 	void translateToNewSize(unsigned nWidth, unsigned nHeight, unsigned paddingX, unsigned paddingY, double metricWidth, double metricHeight, double horiBearingX, double horiBearingY, bool invertY = true);
 	

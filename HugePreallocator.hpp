@@ -1,52 +1,83 @@
 /**
  * @file HugePreallocator.hpp
- * @brief Custom allocator using a pre-allocated huge array.
- * 
- * Provides a custom STL allocator that uses a statically allocated
- * huge array (4096x4096 uint32_t elements) as a memory pool.
- * Useful for avoiding frequent allocations in performance-critical code.
- * 
- * @warning This allocator does not actually deallocate memory and
- *          always returns the same buffer. Use with caution.
+ * @brief STL allocator that always hands out one large static buffer.
+ *
+ * Used for transient GPU readback buffers where allocating and freeing a
+ * multi-megabyte vector on every call would dominate the run time.
+ *
+ * @warning The allocator never deallocates and ignores the requested size; every
+ *          allocation returns a pointer to the same `_hugeArray` buffer.
+ *          Therefore only one such vector may be alive per type at a time.
  */
 
 #ifndef HUGEPREALLOCATOR_HPP
 #define HUGEPREALLOCATOR_HPP
-#include <cstdlib> // size_t, malloc, free
+#include <cstdlib> // size_t
 #include <array>
 #include <cstdint>
 
 /**
- * @brief Huge pre-allocated array (4096x4096 uint32_t elements).
+ * @brief Backing storage: 4096 x 4096 32-bit words (64 MiB).
  * @typedef HugeArray
  */
 typedef std::array<uint32_t,4096*4096> HugeArray;
 
-/**
- * @brief Global instance of the huge array.
- */
+/// @brief The single global backing buffer used by HugePreallocator.
 extern HugeArray _hugeArray;
 
 /**
- * @brief Custom allocator using the huge pre-allocated array.
+ * @brief Stateless STL allocator returning the global huge array.
  * @tparam T Element type.
  * @struct HugePreallocator
  */
 template <class T> struct HugePreallocator {
-	typedef T value_type;
-	HugePreallocator() noexcept { } // default ctor not required
-	template <class U> HugePreallocator(const HugePreallocator<U>&) noexcept { }
-	template <class U> bool operator==(
-		const HugePreallocator<U>&) const noexcept { return true; }
-	template <class U> bool operator!=(
-		const HugePreallocator<U>&) const noexcept { return false; }
+	typedef T value_type; ///< Allocated element type.
 
+	/// @brief Default constructor.
+	HugePreallocator() noexcept { }
+
+	/**
+	 * @brief Converting constructor; all instances are interchangeable.
+	 * @tparam U Source element type.
+	 * @param other Source allocator (unused).
+	 */
+	template <class U> HugePreallocator(const HugePreallocator<U>& other) noexcept { (void)other; }
+
+	/**
+	 * @brief Equality; all HugePreallocator instances are equal.
+	 * @tparam U Other element type.
+	 * @param other Other allocator (unused).
+	 * @return Always true.
+	 */
+	template <class U> bool operator==(const HugePreallocator<U>& other) const noexcept { (void)other; return true; }
+
+	/**
+	 * @brief Inequality; all HugePreallocator instances are equal.
+	 * @tparam U Other element type.
+	 * @param other Other allocator (unused).
+	 * @return Always false.
+	 */
+	template <class U> bool operator!=(const HugePreallocator<U>& other) const noexcept { (void)other; return false; }
+
+	/**
+	 * @brief Return the shared buffer reinterpreted as T*.
+	 * @param n Requested element count; ignored (the buffer is fixed-size).
+	 * @return Pointer to the beginning of `_hugeArray`.
+	 * @warning No bounds checking is performed.
+	 */
 	T * allocate(const size_t n) const {
 		(void)n;
 		return reinterpret_cast<T*>(_hugeArray.data());
 	}
-	void deallocate(T * const p, size_t) const noexcept {
+
+	/**
+	 * @brief No-op; the shared buffer is never released.
+	 * @param p Ignored.
+	 * @param n Ignored.
+	 */
+	void deallocate(T * const p, size_t n) const noexcept {
 		(void)p;
+		(void)n;
 	}
 };
 

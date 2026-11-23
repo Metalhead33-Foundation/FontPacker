@@ -25,8 +25,9 @@
  * @struct UniformForCompute
  */
 struct STD140 UniformForCompute {
-	int32_t width, height;  ///< Texture dimensions
-	int32_t padding[2];     ///< Padding for std140 alignment
+	int32_t width;          ///< SDF search half-radius in X, in logical pixels (samples/2 or padding).
+	int32_t height;         ///< SDF search half-radius in Y, in logical pixels (samples/2 or padding).
+	int32_t padding[2];     ///< Padding to satisfy the std140 16-byte block alignment.
 };
 
 /**
