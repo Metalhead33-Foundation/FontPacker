@@ -287,8 +287,8 @@ void SdfGenerationContext::processOutlineGlyph(StoredCharacter& output, FT_Glyph
 	output.height = glyphSlot->bitmap.rows;
 	output.bearing_x = glyphSlot->bitmap_left;
 	output.bearing_y = glyphSlot->bitmap_top;
-	output.advance_x = glyphSlot->advance.x;
-	output.advance_y = glyphSlot->advance.y;
+	output.advance_x = static_cast<float>(convert26_6ToDouble(glyphSlot->advance.x));
+	output.advance_y = static_cast<float>(convert26_6ToDouble(glyphSlot->advance.y));
 	output.metricWidth = convert26_6ToDouble(glyphSlot->metrics.width);
 	output.metricHeight = convert26_6ToDouble(glyphSlot->metrics.height);
 	output.horiBearingX = convert26_6ToDouble(glyphSlot->metrics.horiBearingX);
@@ -413,8 +413,8 @@ void SdfGenerationContext::processBitmapGlyph(StoredCharacter& output, FT_GlyphS
 	output.height = glyphSlot->bitmap.rows;
 	output.bearing_x = glyphSlot->bitmap_left;
 	output.bearing_y = glyphSlot->bitmap_top;
-	output.advance_x = glyphSlot->advance.x;
-	output.advance_y = glyphSlot->advance.y;
+	output.advance_x = static_cast<float>(convert26_6ToDouble(glyphSlot->advance.x));
+	output.advance_y = static_cast<float>(convert26_6ToDouble(glyphSlot->advance.y));
 
 	output.metricWidth = convert26_6ToDouble(glyphSlot->metrics.width);
 	output.metricHeight = convert26_6ToDouble(glyphSlot->metrics.height);
@@ -555,9 +555,8 @@ void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteA
 				storedChar.height = diagram->height;
 				storedChar.bearing_x = 0;
 				storedChar.bearing_y = 0;
-				// Advances use the same 26.6 fixed-point unit as font glyphs.
-				storedChar.advance_x = static_cast<uint32_t>(diagram->width) * 64u;
-				storedChar.advance_y = static_cast<uint32_t>(diagram->height) * 64u;
+				storedChar.advance_x = static_cast<float>(diagram->width);
+				storedChar.advance_y = static_cast<float>(diagram->height);
 				storedChar.metricWidth = storedChar.width;
 				storedChar.metricHeight = storedChar.height;
 				storedChar.horiBearingX = 0;
@@ -577,9 +576,8 @@ void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteA
 			storedChar.height = diagram->height;
 			storedChar.bearing_x = 0;
 			storedChar.bearing_y = 0;
-			// Advances use the same 26.6 fixed-point unit as font glyphs.
-			storedChar.advance_x = static_cast<uint32_t>(diagram->width) * 64u;
-			storedChar.advance_y = static_cast<uint32_t>(diagram->height) * 64u;
+			storedChar.advance_x = static_cast<float>(diagram->width);
+			storedChar.advance_y = static_cast<float>(diagram->height);
 			storedChar.metricWidth = storedChar.width;
 			storedChar.metricHeight = storedChar.height;
 			storedChar.horiBearingX = 0;

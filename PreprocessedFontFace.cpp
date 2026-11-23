@@ -79,9 +79,12 @@ void PreprocessedFontFace::toCbor(QCborMap& cbor) const
 		cbor.insert(ENCODING_FLAGS_KEY, encodingFlags);
 		cbor.insert(CBOR_MIDPOINT_ADJUSTMENT_KEY, midpointAdjustment);
 	}
+	const bool legacySvgAdvances = (version == 1 && fontFamilyName == QStringLiteral("SVG"));
 	QCborMap tmpMap;
 	for(auto it = std::begin(storedCharacters); it != std::end(storedCharacters); ++it) {
-		tmpMap.insert(it.key(),it.value().toCbor());
+		QCborMap glyphMap;
+		it.value().toCbor(glyphMap, version, legacySvgAdvances);
+		tmpMap.insert(it.key(),glyphMap);
 	}
 	cbor.insert(GLYPHS_KEY, tmpMap);
 	QCborMap kerningMap;
@@ -133,10 +136,11 @@ void PreprocessedFontFace::fromCbor(const QCborMap& cbor)
 	this->encodingFlags = static_cast<uint32_t>(cbor[ENCODING_FLAGS_KEY].toInteger(0));
 	this->midpointAdjustment = static_cast<float>(cbor[CBOR_MIDPOINT_ADJUSTMENT_KEY].toDouble(1.0));
 	QCborMap tmpMap = cbor[GLYPHS_KEY].toMap();
+	const bool legacySvgAdvances = (version == 1 && fontFamilyName == QStringLiteral("SVG"));
 	for(auto it = std::begin(tmpMap); it != std::end(tmpMap); ++it) {
 		unsigned charCode = it.key().toInteger();
 		StoredCharacter storedChar;
-		storedChar.fromCbor(it.value().toMap());
+		storedChar.fromCbor(it.value().toMap(), version, legacySvgAdvances);
 		storedCharacters.insert(charCode, storedChar);
 	}
 	QCborMap kerningMap = cbor[KERNING_KEY].toMap();
@@ -177,6 +181,7 @@ void PreprocessedFontFace::toData(QDataStream& dataStream) const
 	}
 	dataStream << static_cast<uint32_t>(storedCharacters.size());
 	// Write table of contents
+	const bool legacySvgAdvances = (version == 1 && fontFamilyName == QStringLiteral("SVG"));
 	QMap<uint32_t,uint32_t> offsets;
 	auto currOffset = dataStream.device()->pos();
 	for(qsizetype i = 0; i < storedCharacters.size(); ++i) {
@@ -186,7 +191,7 @@ void PreprocessedFontFace::toData(QDataStream& dataStream) const
 	for(auto it = std::begin(storedCharacters); it != std::end(storedCharacters); ++it) {
 		auto glyphOffset = dataStream.device()->pos();
 		offsets.insert(it.key(), glyphOffset);
-		it->toData(dataStream);
+		it->toData(dataStream, version, legacySvgAdvances);
 	}
 	dataStream.device()->seek(currOffset);
 	for(auto it = std::begin(offsets); it != std::end(offsets); ++it) {
@@ -215,6 +220,7 @@ void PreprocessedFontFace::fromData(QDataStream& dataStream)
 	this->type = static_cast<SDFType>(tmpType);
 	this->distType = static_cast<DistanceType>(tmpDist);
 	QMap<uint32_t,uint32_t> offsets;
+	const bool legacySvgAdvances = (version == 1 && fontFamilyName == QStringLiteral("SVG"));
 	for(uint32_t i = 0; i < charCount; ++i) {
 		uint32_t k,v;
 		dataStream >> k >> v;
@@ -224,7 +230,7 @@ void PreprocessedFontFace::fromData(QDataStream& dataStream)
 	for(auto it = std::begin(offsets); it != std::end(offsets); ++it) {
 		dataStream.device()->seek(it.value());
 		StoredCharacter tmpChar;
-		tmpChar.fromData(dataStream);
+		tmpChar.fromData(dataStream, version, legacySvgAdvances);
 		storedCharacters.insert(it.key(),tmpChar);
 	}
 	if(version < 2 && bitmap_logical_size) {

@@ -51,12 +51,12 @@ L x L generation canvas                    S x S stored image
 3. **Stretch into the square.** The decomposed outline is mapped onto `[P, L-P]` on both axes using the **glyph metric box**. `processOutlineGlyphEnd` passes `metricWidth`, `metricHeight`, `horiBearingX` and `horiBearingY` as `double` copies, so the metric overload of `translateToNewSize` is used and the stored metric fields are left intact: `scaleX = (L - 2P) / metricWidth`, `scaleY = (L - 2P) / metricHeight`. A narrow `i` and a wide `W` both fill the same square; texel usage is maximised at the cost of temporary anisotropy.
 4. **Evaluate.** The SDF/MSDF is computed on the `L x L` grid (compute shader or CPU).
 5. **Downsample.** If `S != 0`, the image is halved until the next power of two >= `S`, then smooth-resampled to exactly `S`. The result is encoded with `--format` (PNG by default) and stored as the glyph's `sdf` bytes.
-6. **Record layout.** `width`, `height`, `bearing_x`, `bearing_y`, `advance_x`, `advance_y` (and `horiAdvance`, `vert*`) are stored unchanged from step 1; they describe the **intended** box, not the stretched texture. The four float fields `metricWidth`, `metricHeight`, `horiBearingX`, `horiBearingY` keep their metric-box values.
+6. **Record layout.** `width`, `height`, `bearing_x`, `bearing_y`, `advance_x`, `advance_y` (and `horiAdvance`, `vert*`) describe the **intended** box, not the stretched texture. In version 3 the FreeType 26.6 advances are converted to float pixels; every float metric keeps its metric-box value.
 7. **Write the container.** All glyph tiles plus the TOC, kerning map and face metrics go into `.wodf` (or one graphic plus optional mip chain into `.wodi`).
 
 ### What the per-glyph metrics mean
 
-For **font input**, all float fields are **pixels at `em = L - P`**. They are *not* in font design units and *not* in stored texels. The integer fields are the exception: `advance_x` / `advance_y` are raw **26.6 fixed point** (divide by 64). For **SVG input**, all numeric fields are **SVG user units**, and the integer advances are 26.6 fixed point of those units.
+For **font input**, every field is **pixels at `em = L - P`**. They are *not* in font design units and *not* in stored texels. Version 3 stores `advance_x` / `advance_y` as float pixels too; versions 1 and 2 stored them as raw **26.6 fixed point** (divide by 64). For **SVG input**, all numeric fields are **SVG user units**.
 
 > **The fit uses the metric box.** `metricWidth`, `metricHeight`, `horiBearingX` and `horiBearingY` describe the box each glyph was stretched *from*; they keep their values. For SVG input that box is the viewport (`metricWidth`/`metricHeight` = viewport size, `horiBearingX` = 0, `horiBearingY` = viewport height).
 >
@@ -66,15 +66,15 @@ For **font input**, all float fields are **pixels at `em = L - P`**. They are *n
 |---|---|
 | `width`, `height` | Font: intended glyph box size in whole pixels, **padding excluded**; the size the content box should be drawn at. SVG: the viewport size. |
 | `bearing_x`, `bearing_y` | Offset from the pen origin to the left edge, and from the baseline up to the top edge, in whole pixels. Always 0 for SVG input. |
-| `advance_x`, `advance_y` | Advance in 26.6 fixed point pixels; SVG advances are the viewport size in the same unit. |
+| `advance_x`, `advance_y` | Float advance in pixels (version 3); versions 1/2 store raw 26.6 integers. SVG advances are the viewport size. |
 | `metricWidth`, `metricHeight` | Float metric-box size used by the fit (FreeType metrics, or the SVG viewport). |
 | `horiBearingX`, `horiBearingY` | Float sub-pixel bearings of the metric box. |
-| `horiAdvance` | Float advance in pixels (`advance_x / 64`). |
+| `horiAdvance` | Float advance in pixels; normally equal to `advance_x`. |
 | `vertBearingX`, `vertBearingY`, `vertAdvance` | Vertical metrics; meaningful only when `hasVert` is true. |
 
 To convert a stored pixel value of a **font** back to design units: `value_font_units = value_px * unitsPerEm / (L - P)`. Do not apply this to SVG-backed faces: there `unitsPerEm` is just the viewport height and the values are SVG user units.
 
-> **Version 1 files.** The table above describes version 2 output. Version 1 files were generated with the old fit: vector glyph metric fields hold outline bounds, SVG advances are plain pixels, and SVG textures hold the shape bounds. Regenerate the asset to obtain version 2 semantics; loading and rewriting a version 1 file keeps it at version 1.
+> **Older files.** The table above describes version 3 output. Version 2 already uses the same metric box but stores `advance_x`/`advance_y` as raw 26.6 integers. Version 1 uses the old fit (vector metric fields hold outline bounds, SVG advances are plain pixels, SVG textures hold the shape bounds). Regenerate the asset to obtain version 3; loading and rewriting an older file keeps its original version.
 
 ### Drawing a glyph
 
@@ -95,7 +95,7 @@ Because the quad is expanded by the inverse of the content-box ratio, the silhou
 
 ### Distance values
 
-Both backends normalise each generated image independently: `0.5` is the contour, `1.0` is the largest inside distance in that image, `0.0` the largest outside distance. A constant `0.5` threshold therefore works for every glyph. **`.wodf` version 2** stores the nominal `distanceRangeX`/`Y`, the `encodingFlags` bitmask and `midpointAdjustment`; version 1 files do not, and the reader reconstructs `P * S / L`. The range is the nominal search radius, not an exact per-image scale; use it as an upper bound.
+Both backends normalise each generated image independently: `0.5` is the contour, `1.0` is the largest inside distance in that image, `0.0` the largest outside distance. A constant `0.5` threshold therefore works for every glyph. **`.wodf` version 2 and later** store the nominal `distanceRangeX`/`Y`, the `encodingFlags` bitmask and `midpointAdjustment`; version 1 files do not, and the reader reconstructs `P * S / L`. The range is the nominal search radius, not an exact per-image scale; use it as an upper bound.
 
 ---
 
@@ -105,7 +105,7 @@ Both backends normalise each generated image independently: `0.5` is the contour
 - **Backends:** `Software` (CPU) and `OpenGL` (compute shaders). `OpenCL` is declared but not implemented.
 - **Inputs:** TrueType/OpenType fonts, SVG, `.wodf`/CBOR fonts, `.wodi`/CBOR vector images.
 - **Repacking:** loaded `.wodf`/`.wodi` containers can be re-encoded (`--format`) and rescaled (`--intendedsize`); unsupported generation options are rejected instead of ignored.
-- **Formats:** `.wodf` version 2 (version 1 is still readable), `.wodi` version 1.
+- **Formats:** `.wodf` version 3 (versions 1 and 2 are still readable), `.wodi` version 1.
 - **Outputs:** `.wodf`, CBOR font, individual glyph image files, `.wodi`, CBOR vector image.
 - **Distance metrics:** Manhattan (L1) and Euclidean (L2).
 - **Extras (OpenGL backend unless noted):** msdfgen-style edge colouring, invert, gamma correction, midpoint adjustment, max-downsampling (both backends), encoded mip chains for `.wodi`.
@@ -186,6 +186,7 @@ An SVG loaded with `--insvg` is written through the **font-face** path when the 
 | `--outvectorcbor <path>` | Write CBOR vector image | `--outvectorcbor image.vcbor` |
 
 `--outfont` writes the encoded bytes exactly as stored; it does not re-encode, so the file extension in the pattern should match `--format` (the default payload is PNG).
+
 ### Repacking stored containers
 
 A stored `.wodf`/`.wodi` no longer has the outlines or raw distances, so it cannot be regenerated, but the following options are applied to loaded input:
@@ -197,9 +198,17 @@ A stored `.wodf`/`.wodi` no longer has the outlines or raw distances, so it cann
 | `--createmipmaps` | `.wodi` only: rebuild the halving chain from level 0 down to 1x1. |
 | `--outfont <pattern>` | `.wodf` only: write the (possibly re-encoded) payloads to files. |
 
-`--format` and `--intendedsize` are the only processing options that make sense; every generation option (`--mode`, `--type`, `--dist`, `--padding`, `--internalprocesssize`, `--samplestocheck*`, `--mincharcode`, `--maxcharcode`, `--forceraster`, `--invert`, `--gammacorrect`, `--midpointadjustment`, `--maximizeinsteadofaverage`, `--msdfgencoloring`) is **rejected with an error** when the input is a stored container instead of being silently ignored. A loaded version 1 `.wodf` is rewritten as version 1, because its glyph layout follows the old semantics; regenerate the asset to obtain version 2.
+`--format` and `--intendedsize` are the only processing options that make sense; every generation option (`--mode`, `--type`, `--dist`, `--padding`, `--internalprocesssize`, `--samplestocheck*`, `--mincharcode`, `--maxcharcode`, `--forceraster`, `--invert`, `--gammacorrect`, `--midpointadjustment`, `--maximizeinsteadofaverage`, `--msdfgencoloring`) is **rejected with an error** when the input is a stored container instead of being silently ignored. A loaded version 1 or 2 `.wodf` keeps its original version, because its glyph layout/advance encoding follows the older semantics; regenerate the asset to obtain version 3.
 
+### Inspecting a stored container
 
+```bash
+FontPacker --inspect font.wodf
+FontPacker --inspect image.wodi
+FontPacker --inspect font.cbor
+```
+
+`--inspect <path>` parses `.wodf`, `.wodi`, binary or CBOR containers and prints the header (version, `S`/`L`/`P`, face metrics, distance ranges and encoding flags) plus one line per glyph with bearings, float advances, metric box and encoded payload size. It implies command-line mode (no `--nogui` needed), writes nothing else, and cannot be combined with generation or output options. It is the built-in equivalent of the reference parser in [BINARY_FORMAT.md](BINARY_FORMAT.md).
 
 ### Generation options
 
@@ -314,7 +323,7 @@ The complete specification, with offsets, formulas and a Python reference parser
 
 | Container | Magic | Extension | Contents |
 |---|---|---|---|
-| `PreprocessedFontFace` | `WODF` | `.wodf` | face metrics, glyph TOC, kerning, one `S x S` encoded image per glyph (version 2; version 1 readable) |
+| `PreprocessedFontFace` | `WODF` | `.wodf` | face metrics, glyph TOC, kerning, one `S x S` encoded image per glyph (version 3; versions 1/2 readable) |
 | `StoredVectorImage` | `WODI` | `.wodi` | one graphic, its source bounds, distance ranges, optional mip chain |
 
 The CBOR equivalents carry a `containerType` string (`"PreprocessedFontFace"` or `"StoredVectorImage"`). The `type` field in both is still the SDF flavour (`SDF`/`MSDF`/`MSDFA`), not the container discriminator.
@@ -325,8 +334,8 @@ Important points for consumers:
 - `bitmap_size` is always written as the real stored size. Only historical version 1 files may contain `0`, meaning `bitmap_logical_size x bitmap_logical_size`.
 - Padding is **inside** the logical size; the content box is `L - 2P`.
 - Each glyph tile is square and stretched; use `width`/`height` to restore the aspect ratio for both font and SVG input.
-- `advance_x`/`advance_y` are 26.6 fixed point for both font and SVG input; all other metrics are float pixels (SVG: user units).
-- `.wodf` version 2 stores the nominal distance ranges, encoding flags and midpoint adjustment, like `.wodi`; version 1 files do not.
+- `advance_x`/`advance_y` are float pixels in version 3; versions 1/2 store raw 26.6 integers (version 1 SVG: plain pixels). All other metrics are floats (SVG: user units).
+- `.wodf` versions 2/3 store the nominal distance ranges, encoding flags and midpoint adjustment, like `.wodi`; version 1 files do not.
 
 ---
 

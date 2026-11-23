@@ -111,15 +111,19 @@ QDataStream &operator>>(QDataStream &stream, KerningMap &processedFontFace);
  * `storedCharacters` is keyed by Unicode code point. Every value's `sdf` member
  * is one independently encoded square tile; there is no atlas in this object.
  *
- * @section version2 Format version 2
- * Version 2 adds the nominal encoded distance ranges (`distanceRangeX/Y`),
+ * @section version3 Format version 3
+ * Version 2 added the nominal encoded distance ranges (`distanceRangeX/Y`),
  * the `encodingFlags` bitmask and `midpointAdjustment` to the header, and
- * defines `bitmap_size` to always contain the actual stored square size. New
- * generation writes version 2; the reader accepts version 1 (where the four
- * fields are absent, the metric fields follow the old bounds-based fit and SVG
- * advances are plain pixels) and version 2. A loaded version 1 file stays
- * version 1 when rewritten, because its glyphs cannot be converted to the
- * version 2 layout semantics without regeneration.
+ * defined `bitmap_size` to always contain the actual stored square size.
+ * Version 3 additionally changes every glyph's `advance_x` / `advance_y` from
+ * a raw 26.6 fixed-point integer to a **float in pixels**; the field size is
+ * unchanged, so all offsets are identical. New generation writes version 3.
+ * The reader accepts versions 1, 2 and 3. A loaded older file stays at its
+ * original version when rewritten, because its glyph layout/advance encoding
+ * cannot be converted to the version 3 layout semantics without regeneration.
+ * Version 1 also uses the old bounds-based vector fit and stores plain pixel
+ * advances for SVG-backed faces; version 2 uses the current metric semantics
+ * but still stores raw 26.6 advances.
  *
  * @note `distanceRangeX/Y` are the same **nominal** values stored by
  *       StoredVectorImage: `(samples/2 or padding) * S / L`. Both backends
@@ -130,7 +134,7 @@ QDataStream &operator>>(QDataStream &stream, KerningMap &processedFontFace);
  */
 struct PreprocessedFontFace {
 	static constexpr std::array<char,4> BINARY_MAGIC{{'W','O','D','F'}}; ///< Magic bytes at the start of every `.wodf` file.
-	static constexpr uint32_t CURRENT_VERSION = 2; ///< Current `.wodf` format version; readers accept 1 and 2 and reject 0 and values above this.
+	static constexpr uint32_t CURRENT_VERSION = StoredCharacter::CURRENT_VERSION; ///< Current `.wodf` format version (tied to the glyph advance encoding); readers accept 1, 2 and 3 and reject 0 and values above this.
 
 	uint32_t version = CURRENT_VERSION;        ///< Serialization format version written to the header.
 	QString fontFamilyName;                    ///< Font family name, serialized as length-prefixed UTF-8 (NUL included).
@@ -146,10 +150,10 @@ struct PreprocessedFontFace {
 	float faceHeight = 0.0f;                   ///< Font: baseline-to-baseline distance in pixels at em = L - P. SVG: viewport height.
 	float maxAdvance = 0.0f;                   ///< Font: maximum advance in pixels at em = L - P. SVG: viewport width.
 	uint32_t unitsPerEm = 0;                   ///< Font: original design units per EM (converts pixels to font units). SVG: viewport height, not a design-unit count.
-	float distanceRangeX = 0.0f;               ///< **Version 2:** nominal encoded radius in X, in level-0 texels: `(samples_x/2 or padding) * S / L`.
-	float distanceRangeY = 0.0f;               ///< **Version 2:** nominal encoded radius in Y, in level-0 texels; same formula as X.
-	uint32_t encodingFlags = 0;                ///< **Version 2:** bitmask of StoredVectorImage::EncodingFlag values describing transforms baked into the pixels.
-	float midpointAdjustment = 1.0f;          ///< **Version 2:** baked midpoint divisor; only meaningful when EncodingHasMidpointAdjustment is set.
+	float distanceRangeX = 0.0f;               ///< **Version 2+:** nominal encoded radius in X, in level-0 texels: `(samples_x/2 or padding) * S / L`.
+	float distanceRangeY = 0.0f;               ///< **Version 2+:** nominal encoded radius in Y, in level-0 texels; same formula as X.
+	uint32_t encodingFlags = 0;                ///< **Version 2+:** bitmask of StoredVectorImage::EncodingFlag values describing transforms baked into the pixels.
+	float midpointAdjustment = 1.0f;          ///< **Version 2+:** baked midpoint divisor; only meaningful when EncodingHasMidpointAdjustment is set.
 	KerningMap kerning;                        ///< Sparse kerning table; offsets are pixels at em = L - P.
 	QMap<uint32_t,StoredCharacter> storedCharacters; ///< Glyph payloads keyed by Unicode code point.
 

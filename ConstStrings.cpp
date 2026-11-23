@@ -35,6 +35,7 @@ const QString IN_BIN_KEY = QStringLiteral("inbin");
 const QString IN_CBOR_KEY = QStringLiteral("incbor");
 const QString IN_VECTOR_BIN_KEY = QStringLiteral("invectorbin");
 const QString IN_VECTOR_CBOR_KEY = QStringLiteral("invectorcbor");
+const QString INSPECT_KEY = QStringLiteral("inspect");
 const QString IN_SVG_KEY = QStringLiteral("insvg");
 const QString OUT_FONT_KEY = QStringLiteral("outfont");
 const QString OUT_BIN_KEY = QStringLiteral("outbin");

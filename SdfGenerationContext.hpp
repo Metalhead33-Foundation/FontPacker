@@ -9,6 +9,7 @@
  * - processFont() measures the face at FreeType em = `internalProcessSize - padding`,
  *   fills PreprocessedFontFace::ascender/descender/faceHeight/maxAdvance and copies
  *   the per-glyph metrics into StoredCharacter before any stretching happens.
+ *   FreeType 26.6 advances are converted to float pixels (version 3).
  *   The fit step uses those metrics (as double copies) and does not modify them.
  * - processOutlineGlyph() / processBitmapGlyph() fill one StoredCharacter and then
  *   call processOutlineGlyphEnd(), which stretches the glyph into the
@@ -149,8 +150,8 @@ public:
 	 * The SVG viewport becomes the face metrics: `ascender`, `faceHeight` and
 	 * `unitsPerEm` are set to the viewport height, `maxAdvance` to the viewport
 	 * width and `descender` to 0. Each glyph's `width`/`height`, float metric box
-	 * and `horiAdvance` are the viewport size; `advance_x`/`advance_y` hold that
-	 * size in 26.6 fixed point and the bearings are 0. `hasVert` is always false.
+	 * and `horiAdvance` are the viewport size; `advance_x`/`advance_y` are the
+	 * same size as floats and the bearings are 0. `hasVert` is always false.
 	 * The nominal distance ranges, encoding flags and midpoint adjustment are
 	 * written to the header. A zero-sized viewport is rejected. Use this overload
 	 * with `--outbin`, `--outcbor` or `--outfont`.

@@ -25,8 +25,8 @@ extern const QString WIDTH_KEY;                      ///< `"width"` - glyph box 
 extern const QString HEIGHT_KEY;                     ///< `"height"` - glyph box height in pixels.
 extern const QString BEARING_X_KEY;                  ///< `"bearing_x"` - left bearing in pixels.
 extern const QString BEARING_Y_KEY;                  ///< `"bearing_y"` - top bearing in pixels.
-extern const QString ADVANCE_X_KEY;                  ///< `"advance_x"` - horizontal advance (26.6 in binary; CBOR stores the raw integer).
-extern const QString ADVANCE_Y_KEY;                  ///< `"advance_y"` - vertical advance (26.6 in binary).
+extern const QString ADVANCE_X_KEY;                  ///< `"advance_x"` - horizontal advance; float pixels in version 3+; raw 26.6 integer in versions 1/2 (version 1 SVG: plain pixels).
+extern const QString ADVANCE_Y_KEY;                  ///< `"advance_y"` - vertical advance; float pixels in version 3+; raw 26.6 integer in versions 1/2 (version 1 SVG: plain pixels).
 extern const QString SDF_KEY;                        ///< `"sdf"` - encoded glyph image bytes.
 /** @} */
 
@@ -55,6 +55,7 @@ extern const QString IN_BIN_KEY;                     ///< `"inbin"` - input `.wo
 extern const QString IN_CBOR_KEY;                    ///< `"incbor"` - input CBOR font path.
 extern const QString IN_VECTOR_BIN_KEY;              ///< `"invectorbin"` - input `.wodi` path.
 extern const QString IN_VECTOR_CBOR_KEY;             ///< `"invectorcbor"` - input CBOR vector-image path.
+extern const QString INSPECT_KEY;                    ///< `"inspect"` - print a parsed container summary instead of generating output.
 extern const QString IN_SVG_KEY;                     ///< `"insvg"` - input SVG path.
 extern const QString OUT_FONT_KEY;                   ///< `"outfont"` - per-glyph file pattern.
 extern const QString OUT_BIN_KEY;                    ///< `"outbin"` - output `.wodf` path.
