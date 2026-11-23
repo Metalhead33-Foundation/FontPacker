@@ -114,27 +114,45 @@ Both backends normalise each generated image independently: `0.5` is the contour
 
 | Dependency | Notes |
 |---|---|
-| Qt 6 | `core gui opengl widgets openglwidgets core5compat` (see `FontPacker.pro`) |
+| Qt 6 | `core gui opengl widgets openglwidgets core5compat` (split across `lib/` and `app/`) |
 | FreeType 2 | outline loading, metrics, raster fallback |
-| HarfBuzz | linked by the project (`harfbuzz/hb-ft.h`) |
+| HarfBuzz | linked by the library (`harfbuzz/hb-ft.h`) |
 | libsvgtiny | SVG parsing |
 | GLM | vector math in the generation code |
 | OpenMP | the software SDF loop is parallelised with `#pragma omp` |
+| Catch2 3 | unit tests (`pkg-config --cflags --libs catch2`) |
 | Doxygen (optional) | only for the API documentation; see below |
+
+### Source layout
+
+```
+FontPacker.pro           # qmake subdirs project: lib, app, tests
+lib/                     # FontPackerCore static library (all non-GUI/CLI code + shaders)
+app/                     # GUI and command-line front end
+tests/                   # Catch2 unit tests
+```
 
 ### Building
 
-The project uses qmake:
+The project uses qmake. Build out-of-source under `build/`:
 
 ```bash
-qmake6 FontPacker.pro      # or `qmake` on distributions where qmake is Qt 6
-make -j$(nproc)
-./FontPacker               # GUI mode
+mkdir -p build
+cd build
+/usr/bin/qmake6 ../FontPacker.pro
+env MAKE=/usr/bin/make /usr/bin/make -j$(nproc) QMAKE=/usr/bin/qmake6
+./app/FontPacker             # GUI mode
+./app/FontPacker --inspect some.wodf
+env MAKE=/usr/bin/make /usr/bin/make check QMAKE=/usr/bin/qmake6  # Catch2 unit tests
 ```
 
-`FontPacker.pro` sets `CONFIG += c++2a cmdline` and links `-lfreetype -lharfbuzz -lsvgtiny -fopenmp`. Defining `HIRES` changes the built-in defaults from `L=1024, P=100` to `L=4096, P=400` (see `SDFGenerationArguments.cpp`).
+`lib/FontPackerLib.pro` builds the `FontPackerCore` static library. `app/FontPackerApp.pro` links it along with `-lfreetype -lharfbuzz -lsvgtiny -fopenmp`. Defining `HIRES` changes the built-in defaults from `L=1024, P=100` to `L=4096, P=400` (see `lib/SDFGenerationArguments.cpp`).
 
-> Note: `FontPacker.pro` contains `INCLUDEPATH += I/usr/include/harfbuzz` (a missing `-`). It is harmless when HarfBuzz is installed under `/usr/include`, but should be `-I/usr/include/harfbuzz` if your headers live elsewhere.
+The OpenGL shaders are compiled into the **library** as Qt resources. The executable calls `Q_INIT_RESOURCE(resources)` so the static resource object is linked and registered before `SdfGenerationGL` or `OpenGLCanvas` opens `:/shader*.glsl`.
+
+### Unit tests
+
+`tests/FontPackerTests.pro` builds a Catch2 3 fixture linked against `FontPackerCore` and uses the system Catch2 from `pkg-config --cflags --libs catch2`. The tests exercise binary and CBOR serialization of `StoredCharacter`, `PreprocessedFontFace` and `StoredVectorImage`, including version 1/2/3 compatibility, float/26.6 advances, legacy SVG advances, invalid glyphs and in-memory repacking. All serialization tests use `QBuffer`, so no temporary files are written; `QFile` and `QBuffer` share the same `QIODevice` interface. Run them with `make check` from the shadow build directory, or execute `tests/FontPackerTests` directly with a Catch2 reporter.
 
 ### Documentation
 

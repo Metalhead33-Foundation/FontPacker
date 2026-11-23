@@ -14,7 +14,7 @@ The layout is written field by field by `PreprocessedFontFace::toData`, `StoredC
 Related documents:
 
 - [README.md](README.md) - how a package is produced from the command line and what the options mean.
-- [SdfGenerationContext.hpp](SdfGenerationContext.hpp), [FontOutlineDecompositionContext.hpp](FontOutlineDecompositionContext.hpp) - the code that produces the values described here.
+- [lib/SdfGenerationContext.hpp](lib/SdfGenerationContext.hpp), [lib/FontOutlineDecompositionContext.hpp](lib/FontOutlineDecompositionContext.hpp) - the code that produces the values described here.
 
 The application itself can print a parsed summary of any `.wodf`, `.wodi`, binary or CBOR container:
 

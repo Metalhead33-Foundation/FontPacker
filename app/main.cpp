@@ -287,6 +287,7 @@ QVariantMap parseArguments(int argc, char *argv[]);
  */
 int main(int argc, char *argv[])
 {
+	Q_INIT_RESOURCE(resources);
 	QApplication a(argc, argv);
 	setlocale(LC_ALL, "C");
 	auto args = parseArguments(argc,argv);

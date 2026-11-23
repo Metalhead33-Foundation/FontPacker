@@ -1,74 +1,9 @@
-QT += core gui opengl widgets openglwidgets core5compat
+TEMPLATE = subdirs
+SUBDIRS += lib app tests
 
-CONFIG += c++2a cmdline
+lib.file = lib/FontPackerLib.pro
+app.file = app/FontPackerApp.pro
+app.depends = lib
 
-INCLUDEPATH += /usr/include/freetype2
-INCLUDEPATH += /usr/include/harfbuzz
-QMAKE_CXXFLAGS += -fopenmp
-QMAKE_CFLAGS += -fopenmp
-QMAKE_LFLAGS += -fopenmp
-LIBS += -lfreetype -lharfbuzz -lsvgtiny -fopenmp
-
-# You can make your code fail to compile if it uses deprecated APIs.
-# In order to do so, uncomment the following line.
-DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
-
-SOURCES += \
-        CQTOpenGLLuaSyntaxHighlighter.cpp \
-        ConstStrings.cpp \
-        FontOutlineDecompositionContext.cpp \
-        GlHelpers.cpp \
-        HugePreallocator.cpp \
-        MainWindow.cpp \
-        OpenGLCanvas.cpp \
-        PreprocessedFontFace.cpp \
-        QDataStreamHelper.cpp \
-        SDFGenerationArguments.cpp \
-        SdfGenerationContext.cpp \
-        SdfGenerationContextSoft.cpp \
-        SdfGenerationGL.cpp \
-        StoredCharacter.cpp \
-        StoredVectorImage.cpp \
-        main.cpp
-
-# Default rules for deployment.
-qnx: target.path = /tmp/$${TARGET}/bin
-else: unix:!android: target.path = /opt/$${TARGET}/bin
-!isEmpty(target.path): INSTALLS += target
-
-DISTFILES += \
-    .gitignore \
-    BINARY_FORMAT.md \
-    LICENSE \
-    README.md \
-    msdf_fixer.glsl \
-    screen.vert.glsl \
-    shader1.glsl \
-    shader3.glsl \
-    shader3_msdf.glsl \
-    shader_msdf1.glsl
-
-HEADERS += \
-    CQTOpenGLLuaSyntaxHighlighter.hpp \
-    ConstStrings.hpp \
-    FontOutlineDecompositionContext.hpp \
-    GlHelpers.hpp \
-    HugePreallocator.hpp \
-    MainWindow.hpp \
-    Mallocator.hpp \
-    OpenGLCanvas.hpp \
-    PreprocessedFontFace.hpp \
-    QDataStreamHelper.hpp \
-    RGBA8888.hpp \
-    SDFGenerationArguments.hpp \
-    SdfGenerationContext.hpp \
-    SdfGenerationContextSoft.hpp \
-    SdfGenerationGL.hpp \
-    StoredCharacter.hpp \
-    StoredVectorImage.hpp
-
-RESOURCES += \
-    resources.qrc
-
-FORMS += \
-    MainWindow.ui
+tests.file = tests/FontPackerTests.pro
+tests.depends = lib
