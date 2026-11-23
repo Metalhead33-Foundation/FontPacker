@@ -30,7 +30,10 @@ MainWindow::MainWindow(QWidget *parent)
 	ui->setupUi(this);
 	setupShaderTools();
 	connect(ui->hlsl2GlslBtn, &QPushButton::clicked, this, &MainWindow::onHlsl2GlslBtnClicked);
-	highlighter = new argos::CQTOpenGLLuaSyntaxHighlighter(ui->glslEditor->document(), false);
+	glslHighlighter = new argos::CQTOpenGLShaderSyntaxHighlighter(ui->glslEditor->document(),
+			argos::ShaderLanguage::GLSL);
+	hlslHighlighter = new argos::CQTOpenGLShaderSyntaxHighlighter(ui->hlslEditor->document(),
+			argos::ShaderLanguage::HLSL);
 	emit changeState(MainWindowState::INITIAL);
 }
 

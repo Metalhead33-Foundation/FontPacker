@@ -1,5 +1,5 @@
 # GUI and command-line front end.
-QT += core gui widgets opengl openglwidgets core5compat
+QT += core gui widgets opengl openglwidgets
 CONFIG += c++2a cmdline
 TEMPLATE = app
 TARGET = FontPacker
@@ -16,13 +16,13 @@ LIBS += -L$$OUT_PWD/../lib -L$$OUT_PWD -L$$PWD/.. -lFontPackerCore
 LIBS += -L/usr/local/lib64 -lspirv-cross-glsl -lspirv-cross-core -lglslang -lSPIRV -lglslang-default-resource-limits $$system(pkg-config --libs OpenCL) -lfreetype -lharfbuzz -lsvgtiny -fopenmp
 
 SOURCES += \
-    CQTOpenGLLuaSyntaxHighlighter.cpp \
+    CQTOpenGLShaderSyntaxHighlighter.cpp \
     MainWindow.cpp \
     OpenGLCanvas.cpp \
     main.cpp
 
 HEADERS += \
-    CQTOpenGLLuaSyntaxHighlighter.hpp \
+    CQTOpenGLShaderSyntaxHighlighter.hpp \
     MainWindow.hpp \
     OpenGLCanvas.hpp
 

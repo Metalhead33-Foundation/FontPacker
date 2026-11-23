@@ -18,7 +18,7 @@
 
 class QComboBox;
 class QPushButton;
-#include "CQTOpenGLLuaSyntaxHighlighter.hpp"
+#include "CQTOpenGLShaderSyntaxHighlighter.hpp"
 
 namespace Ui {
 class MainWindow;
@@ -184,7 +184,8 @@ private:
 	std::unique_ptr<PreprocessedFontFace> font_face; ///< Loaded font face, if any.
 	std::unique_ptr<StoredVectorImage> vector_face;  ///< Loaded vector image, if any.
 	QColor clr;                                  ///< Colour currently passed to the preview shader.
-	argos::CQTOpenGLLuaSyntaxHighlighter* highlighter; ///< Highlighter attached to the shader editor.
+	argos::CQTOpenGLShaderSyntaxHighlighter* glslHighlighter = nullptr; ///< GLSL editor highlighter.
+	argos::CQTOpenGLShaderSyntaxHighlighter* hlslHighlighter = nullptr; ///< HLSL editor highlighter.
 
 	QComboBox* shaderExampleComboBox = nullptr; ///< Built-in example selector.
 	QPushButton* shaderTutorialBtn = nullptr;   ///< Short tutorial popup button.

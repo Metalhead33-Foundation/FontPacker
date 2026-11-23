@@ -5,7 +5,7 @@ TEMPLATE = app
 TARGET = FontPackerTests
 DESTDIR = $$OUT_PWD
 
-INCLUDEPATH += $$PWD/../lib /usr/include/freetype2 /usr/include/harfbuzz
+INCLUDEPATH += $$PWD/../lib $$PWD/../app /usr/include/freetype2 /usr/include/harfbuzz
 QMAKE_CXXFLAGS += $$system(pkg-config --cflags catch2) $$system(pkg-config --cflags OpenCL) -I/usr/local/include -fopenmp
 QMAKE_LFLAGS += -fopenmp
 
@@ -21,7 +21,10 @@ SOURCES += \
     test_opencl.cpp \
     test_gl_shaders.cpp \
     test_hlsl.cpp \
-    test_software.cpp
+    test_software.cpp \
+    test_highlighter.cpp \
+    ../app/CQTOpenGLShaderSyntaxHighlighter.cpp
 
 HEADERS += \
-    test_helpers.hpp
+    test_helpers.hpp \
+    ../app/CQTOpenGLShaderSyntaxHighlighter.hpp

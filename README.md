@@ -115,7 +115,7 @@ Both backends normalise each generated image independently: `0.5` is the contour
 
 | Dependency | Notes |
 |---|---|
-| Qt 6 | `core gui opengl widgets openglwidgets core5compat` (split across `lib/` and `app/`) |
+| Qt 6 | `core gui opengl widgets openglwidgets` (split across `lib/` and `app/`) |
 | FreeType 2 | outline loading, metrics, raster fallback |
 | HarfBuzz | linked by the library (`harfbuzz/hb-ft.h`) |
 | libsvgtiny | SVG parsing |
@@ -175,7 +175,7 @@ user fragment shader. It includes GLSL examples, an in-app tutorial popup, and
 HLSL input translated by glslang (HLSL -> SPIR-V) and SPIRV-Cross
 (SPIR-V -> GLSL 3.30). See [docs/SHADER_TUTORIAL.md](docs/SHADER_TUTORIAL.md).
 The HLSL front-end of glslang is deprecated upstream; the converter is isolated
-behind `lib/HlslToGlsl.hpp` for a later DXC/Slang replacement.
+behind `lib/HlslToGlsl.hpp` for a later DXC/Slang replacement. The syntax highlighter (`app/CQTOpenGLShaderSyntaxHighlighter.*`) uses separate GLSL and HLSL rule sets (keywords, types, preprocessor directives, HLSL semantics and cross-line comments); it no longer uses the old Lua-oriented rules or `Qt6::Core5Compat`.
 
 ### Documentation
 
