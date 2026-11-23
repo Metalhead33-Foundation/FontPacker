@@ -12,6 +12,9 @@
 
 #version 430 core
 
+/**
+ * @brief OpenGL compute work-group size declaration.
+ */
 layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 /**
@@ -42,6 +45,7 @@ layout (binding = 3, std140) uniform Dimensions {
     int intendedSampleHeight; ///< Sample search height in pixels
 };
 
+/** @brief Maximum supported sample dimension. */
 #define MAX_SAMPLES_DIM 4
 
 /**
@@ -100,6 +104,12 @@ vec3 calculateDistance(ivec2 threadId, ivec2 texSize, float maxDistance, bool is
     return minDistance / maxDistance;
 }
 
+/**
+ * @brief Main compute shader entry point.
+ *
+ * Computes per-direction distances for one bitmap pixel and writes the raw
+ * MSDF channels and inside/outside mask.
+ */
 void main() {
     ivec2 threadId = ivec2(gl_GlobalInvocationID.xy);
     ivec2 imageDimensions = imageSize(rawSdfTexture);

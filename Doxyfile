@@ -44,13 +44,13 @@ MULTILINE_CPP_IS_BRIEF = NO
 INHERIT_DOCS           = YES
 SEPARATE_MEMBER_PAGES  = NO
 TAB_SIZE               = 4
-ALIASES                =
+ALIASES                = "binding=@par Binding:" "requires=@par Requires:"
 
 OPTIMIZE_OUTPUT_FOR_C  = NO
 OPTIMIZE_OUTPUT_JAVA   = NO
 OPTIMIZE_FOR_FORTRAN   = NO
 OPTIMIZE_OUTPUT_VHDL   = NO
-EXTENSION_MAPPING      =
+EXTENSION_MAPPING      = glsl=C++ cl=C hlsl=C++
 MARKDOWN_SUPPORT       = YES
 TOC_INCLUDE_HEADINGS   = 2
 AUTOLINK_SUPPORT       = YES
@@ -123,7 +123,7 @@ WARN_LOGFILE           =
 
 INPUT                  = lib app README.md BINARY_FORMAT.md
 INPUT_ENCODING         = UTF-8
-FILE_PATTERNS          = *.hpp *.md
+FILE_PATTERNS          = *.hpp *.md *.glsl *.cl *.hlsl
 RECURSIVE              = YES
 EXCLUDE                = build doxygen-awesome-css .git .github
 EXCLUDE_SYMLINKS       = NO

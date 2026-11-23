@@ -11,7 +11,7 @@ FontPacker is an offline packer that turns TrueType/OpenType fonts and SVG files
 |---|---|
 | **README.md** (this file) | what the tool does, how a package is built, build/run instructions, option reference |
 | [BINARY_FORMAT.md](BINARY_FORMAT.md) | complete byte-level specification of `.wodf` and `.wodi`, geometry formulas, metric provenance, CBOR mapping, gotchas |
-| Doxygen site | API reference generated from the headers (see the Documentation section below) |
+| Doxygen site | API reference generated from the headers and shader sources (see the Documentation section below) |
 
 ---
 
@@ -153,7 +153,7 @@ The OpenGL shaders are compiled into the **library** as Qt resources. The execut
 
 ### Unit tests
 
-`tests/FontPackerTests.pro` builds a Catch2 3 fixture linked against `FontPackerCore` and uses the system Catch2 from `pkg-config --cflags --libs catch2`. The tests exercise binary and CBOR serialization of `StoredCharacter`, `PreprocessedFontFace` and `StoredVectorImage`, including version 1/2/3 compatibility, float/26.6 advances, legacy SVG advances, invalid glyphs and in-memory repacking. All serialization tests use `QBuffer`, so no temporary files are written; `QFile` and `QBuffer` share the same `QIODevice` interface. Run them with `make check` from the shadow build directory, or execute `tests/FontPackerTests` directly with a Catch2 reporter.
+`tests/FontPackerTests.pro` builds a Catch2 3 fixture linked against `FontPackerCore` and uses the system Catch2 from `pkg-config --cflags --libs catch2`. The tests exercise binary and CBOR serialization of `StoredCharacter`, `PreprocessedFontFace` and `StoredVectorImage`, including version 1/2/3 compatibility, float/26.6 advances, legacy SVG advances, invalid glyphs and in-memory repacking. All serialization tests use `QBuffer`, so no temporary files are written; `QFile` and `QBuffer` share the same `QIODevice` interface. Run them with `make check` from the shadow build directory, or execute `tests/FontPackerTests` directly with a Catch2 reporter. The graphics tests compile every GLSL shader source (including the Manhattan variants) in an OpenGL 4.3 context, and the OpenCL tests build the kernel program in both distance modes, so shader/kernel syntax errors fail `make check`. The graphics tests skip cleanly when no OpenGL/OpenCL device is available.
 
 ### OpenCL backend
 
@@ -163,11 +163,11 @@ The OpenGL shaders are compiled into the **library** as Qt resources. The execut
 -cl-fast-relaxed-math -cl-unsafe-math-optimizations -cl-no-signed-zeros
 ```
 
-The targets are correctness and performance, not byte equality with OpenGL; small numeric differences are expected (and may grow across different GPU drivers). The bitmap/raster path currently supports SDF only; use vector outlines for MSDF/MSDFA. The existing OpenGL implementation is unchanged.
+The targets are correctness and performance, not byte equality with OpenGL; small numeric differences are expected (and may grow across different GPU drivers). The bitmap/raster path currently supports SDF only; use vector outlines for MSDF/MSDFA. The OpenGL backend is otherwise unchanged; its Manhattan define now has a fix at a legal preprocessor position.
 
 ### Documentation
 
-All headers are documented with Doxygen's Qt dialect (`/** ... */`, `///`, `\brief`, `\param`, `\return`, `\see`). The reference is generated from the headers and the two Markdown documents:
+All headers are documented with Doxygen's Qt dialect (`/** ... */`, `///`, `\brief`, `\param`, `\return`, `\see`). Doxygen also ingests the shader sources (`*.glsl`, `*.cl`, and future `*.hlsl`) with extension mappings and Doxygen-style comments. The reference is generated from the headers, the shaders and the two Markdown documents:
 
 ```bash
 git submodule update --init --recursive   # fetches doxygen-awesome-css
@@ -379,7 +379,6 @@ These are current properties of the code, documented so that users and automated
 5. **`imageFormat` is limited to 7 characters.** Longer codec names are truncated and zero padded. This is accepted by design.
 6. **HIRES changes defaults silently.** With `DEFINES += HIRES`, `L` defaults to 4096 and `P` to 400 instead of 1024/100. This is accepted by design.
 7. **The Software backend ignores value transforms.** `--invert`, `--gammacorrect` and `--midpointadjustment` are implemented by the GL/OpenCL readback paths; the software distance pass normalises but does not transform the values.
-8. **OpenGL `--dist Manhattan` is currently ignored.** `SdfGenerationGL` inserts `#define USE_MANHATTAN_DISTANCE` after the first newline of each shader; because the shaders start with a block comment, the define is ignored and the GL backend produces Euclidean output. The OpenCL backend applies Manhattan correctly. The GL code was intentionally left unchanged.
 
 ---
 

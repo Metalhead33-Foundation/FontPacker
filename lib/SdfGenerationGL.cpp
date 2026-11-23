@@ -7,6 +7,34 @@
 #include <glm/glm.hpp>
 #include "RGBA8888.hpp"
 
+namespace {
+
+/**
+ * @brief Insert the Manhattan-distance define at a legal GLSL preprocessor position.
+ *
+ * The shader files start with a Doxygen block comment and put `#version` after
+ * it. Inserting immediately after the first newline would therefore place the
+ * define inside that comment, where GLSL ignores it. Put it after the
+ * `#version` directive instead; if no directive exists, use the beginning.
+ * @param source Shader source.
+ * @return Source with `USE_MANHATTAN_DISTANCE` defined when possible.
+ */
+QByteArray injectManhattanDefine(QByteArray source)
+{
+	const QByteArray define = QByteArrayLiteral("#define USE_MANHATTAN_DISTANCE\n");
+	const int versionPos = source.indexOf("#version");
+	if(versionPos >= 0) {
+		const int lineEnd = source.indexOf('\n', versionPos);
+		if(lineEnd >= 0) source.insert(lineEnd + 1, define);
+		else source.append('\n').append(define);
+		return source;
+	}
+	source.prepend(define);
+	return source;
+}
+
+}
+
 struct Rgb32f {
 	float r, g, b, a;
 };
@@ -199,7 +227,7 @@ SdfGenerationGL::SdfGenerationGL(const SDFGenerationArguments& args) :
 		if(res.open(QFile::ReadOnly)) {
 			QByteArray shdrArr = res.readAll();
 			if(args.distType == DistanceType::Manhattan) {
-				shdrArr.insert(shdrArr.indexOf('\n')+1,QByteArrayLiteral("#define USE_MANHATTAN_DISTANCE\n"));
+				shdrArr = injectManhattanDefine(shdrArr);
 			}
 			if(!glShader->addCacheableShaderFromSourceCode(QOpenGLShader::Compute,shdrArr)) {
 				errStrm << glShader->log() << '\n';
@@ -219,7 +247,7 @@ SdfGenerationGL::SdfGenerationGL(const SDFGenerationArguments& args) :
 		if(res.open(QFile::ReadOnly)) {
 			QByteArray shdrArr = res.readAll();
 			if(args.distType == DistanceType::Manhattan) {
-				shdrArr.insert(shdrArr.indexOf('\n')+1,QByteArrayLiteral("#define USE_MANHATTAN_DISTANCE\n"));
+				shdrArr = injectManhattanDefine(shdrArr);
 			}
 			if(!glShader2->addCacheableShaderFromSourceCode(QOpenGLShader::Compute,shdrArr)) {
 				errStrm << glShader2->log() << '\n';

@@ -1,3 +1,12 @@
+/**
+ * @file sdf_opencl.cl
+ * @brief OpenCL 1.2 kernels for bitmap SDF, outline SDF and outline MSDF/MSDFA.
+ *
+ * Buffer-based port of the GLSL compute shaders. The host compiles this source
+ * with the fast-math flags and, for Manhattan mode, with
+ * `USE_MANHATTAN_DISTANCE` defined.
+ */
+
 /*
  * OpenCL 1.2 kernels for FontPacker.
  *
@@ -8,32 +17,52 @@
  * the OpenGL backend.
  */
 
+/**
+ * @brief Select the Manhattan or Euclidean distance formula.
+ */
 #ifdef USE_MANHATTAN_DISTANCE
 #define DISTANCE_FUNC(p1, p2) (fabs((p1).x - (p2).x) + fabs((p1).y - (p2).y))
 #else
 #define DISTANCE_FUNC(p1, p2) length((p1) - (p2))
 #endif
 
+/** @brief Largest finite 32-bit float, used as an initial minimum. */
 #define FLT_MAX_VALUE 3.402823466e+38f
 
 typedef struct {
-    int type;
-    int shapeId;
-    unsigned int clr;
-    int padding;
-    float2 points[4];
+    int type;                  ///< Edge kind: 0=line, 1=quadratic, 2=cubic.
+    int shapeId;               ///< Contour/shape identifier.
+    unsigned int clr;          ///< RRGGBBXX edge color for MSDF channel selection.
+    int padding;               ///< Matches the C++ EdgeSegment padding field.
+    float2 points[4];          ///< Control points.
+
 } EdgeSegment;
 
+/**
+ * @brief Result of a pseudo-distance search on a curve.
+ * @struct PseudoResult
+ */
 typedef struct {
-    float dist;
-    float2 point;
-    float t;
+    float dist;               ///< Unsigned distance to the closest sample.
+    float2 point;              ///< Closest point on the sampled curve.
+    float t;                   ///< Curve parameter of the closest sample.
+
 } PseudoResult;
 
 /* ------------------------------------------------------------------------- */
 /* Bitmap SDF (shader1.glsl)                                                 */
 /* ------------------------------------------------------------------------- */
 
+/**
+ * @brief Generate a single-channel raw SDF from a raster bitmap.
+ * @param fontTexture Input 8-bit grayscale bitmap.
+ * @param rawSdf Output raw distance buffer.
+ * @param insideTex Output inside/outside mask.
+ * @param width Image width.
+ * @param height Image height.
+ * @param sampleWidth Horizontal search radius.
+ * @param sampleHeight Vertical search radius.
+ */
 __kernel void sdf_bitmap(__global const uchar* fontTexture,
                          __global float* rawSdf,
                          __global unsigned int* insideTex,
@@ -80,6 +109,14 @@ __kernel void sdf_bitmap(__global const uchar* fontTexture,
 /* Outline SDF (shader3.glsl)                                                */
 /* ------------------------------------------------------------------------- */
 
+/**
+ * @brief Compute the distance from a point to a finite line segment.
+ * @param maxDistance Maximum search distance (unused; kept for symmetry).
+ * @param p Query point.
+ * @param p1 Segment start.
+ * @param p2 Segment end.
+ * @return Distance from @p p to the segment.
+ */
 float distanceToLineSegment(float maxDistance, float2 p, float2 p1, float2 p2)
 {
     (void)maxDistance;
@@ -93,6 +130,16 @@ float distanceToLineSegment(float maxDistance, float2 p, float2 p1, float2 p2)
     return DISTANCE_FUNC(p, p1 + b * v);
 }
 
+/**
+ * @brief Approximate the distance to a quadratic Bezier curve.
+ * @param maxDistance Initial upper bound.
+ * @param p Query point.
+ * @param p1 Curve start.
+ * @param p2 Control point.
+ * @param p3 Curve end.
+ * @param width Image width, used to choose the sample count.
+ * @return Distance from @p p to the sampled curve.
+ */
 float distanceToQuadraticBezier(float maxDistance, float2 p, float2 p1, float2 p2, float2 p3, int width)
 {
     float minDist = maxDistance;
@@ -107,6 +154,17 @@ float distanceToQuadraticBezier(float maxDistance, float2 p, float2 p1, float2 p
     return minDist;
 }
 
+/**
+ * @brief Approximate the distance to a cubic Bezier curve.
+ * @param maxDistance Initial upper bound.
+ * @param p Query point.
+ * @param p1 Curve start.
+ * @param p2 First control point.
+ * @param p3 Second control point.
+ * @param p4 Curve end.
+ * @param width Image width, used to choose the sample count.
+ * @return Distance from @p p to the sampled curve.
+ */
 float distanceToCubicBezier(float maxDistance, float2 p, float2 p1, float2 p2, float2 p3, float2 p4, int width)
 {
     float minDist = maxDistance;
@@ -122,6 +180,14 @@ float distanceToCubicBezier(float maxDistance, float2 p, float2 p1, float2 p2, f
     return minDist;
 }
 
+/**
+ * @brief Compute the winding contribution of one edge at a position.
+ * @param pos Position to test.
+ * @param edges Edge array.
+ * @param i Edge index.
+ * @param curveSteps Number of linear samples for curved edges.
+ * @return Signed winding contribution (0, +1 or -1).
+ */
 int calculateWindingFor(float2 pos, __global const EdgeSegment* edges, unsigned int i, int curveSteps)
 {
     int winding = 0;
@@ -157,6 +223,14 @@ int calculateWindingFor(float2 pos, __global const EdgeSegment* edges, unsigned 
     return winding;
 }
 
+/**
+ * @brief Compute the total winding number across all edges.
+ * @param pos Position to test.
+ * @param edges Edge array.
+ * @param edgeCount Number of edges.
+ * @param curveSteps Number of linear samples for curved edges.
+ * @return Winding number (non-zero means inside).
+ */
 int calculateWinding(float2 pos, __global const EdgeSegment* edges, unsigned int edgeCount, int curveSteps)
 {
     int windingNumber = 0;
@@ -166,6 +240,17 @@ int calculateWinding(float2 pos, __global const EdgeSegment* edges, unsigned int
     return windingNumber;
 }
 
+/**
+ * @brief Generate a single-channel raw SDF from vector edges.
+ * @param edges Input edge array.
+ * @param edgeCount Number of edges.
+ * @param rawSdf Output raw distance buffer.
+ * @param insideTex Output inside/outside mask.
+ * @param width Image width.
+ * @param height Image height.
+ * @param sampleWidth Horizontal search radius.
+ * @param sampleHeight Vertical search radius.
+ */
 __kernel void sdf_outline(__global const EdgeSegment* edges, unsigned int edgeCount,
                           __global float* rawSdf,
                           __global unsigned int* insideTex,
@@ -207,6 +292,11 @@ __kernel void sdf_outline(__global const EdgeSegment* edges, unsigned int edgeCo
 /* Outline MSDF (shader3_msdf.glsl)                                         */
 /* ------------------------------------------------------------------------- */
 
+/**
+ * @brief Unpack an RRGGBBXX edge color into normalized RGB components.
+ * @param packedRgb Packed edge color.
+ * @return RGB components in the range [0, 1].
+ */
 float3 unpackRGB(unsigned int packedRgb)
 {
     const float inv255 = 1.0f / 255.0f;
@@ -216,6 +306,13 @@ float3 unpackRGB(unsigned int packedRgb)
         (float)(packedRgb & 0xFFu) * inv255);
 }
 
+/**
+ * @brief Distance from a point to the line through two points.
+ * @param p Query point.
+ * @param a First line point.
+ * @param b Second line point.
+ * @return Distance to the line.
+ */
 float distanceToLinePseudo(float2 p, float2 a, float2 b)
 {
     float2 pa = p - a;
@@ -224,6 +321,15 @@ float distanceToLinePseudo(float2 p, float2 a, float2 b)
     return DISTANCE_FUNC(p, a + h * ba);
 }
 
+/**
+ * @brief Find the closest pseudo-distance on a quadratic Bezier curve.
+ * @param p Query point.
+ * @param p0 Curve start.
+ * @param p1 Control point.
+ * @param p2 Curve end.
+ * @param subdivisions Number of line subdivisions.
+ * @return Closest-distance result.
+ */
 PseudoResult distanceToQuadraticPseudo(float2 p, float2 p0, float2 p1, float2 p2, int subdivisions)
 {
     PseudoResult result;
@@ -246,6 +352,16 @@ PseudoResult distanceToQuadraticPseudo(float2 p, float2 p0, float2 p1, float2 p2
     return result;
 }
 
+/**
+ * @brief Find the closest pseudo-distance on a cubic Bezier curve.
+ * @param p Query point.
+ * @param p0 Curve start.
+ * @param p1 First control point.
+ * @param p2 Second control point.
+ * @param p3 Curve end.
+ * @param subdivisions Number of line subdivisions.
+ * @return Closest-distance result.
+ */
 PseudoResult distanceToCubicPseudo(float2 p, float2 p0, float2 p1, float2 p2, float2 p3, int subdivisions)
 {
     PseudoResult result;
@@ -271,6 +387,13 @@ PseudoResult distanceToCubicPseudo(float2 p, float2 p0, float2 p1, float2 p2, fl
     return result;
 }
 
+/**
+ * @brief Compute a signed pseudo-distance to one edge.
+ * @param p Query point.
+ * @param edge Edge segment.
+ * @param width Image width, used to choose the sample count.
+ * @return Signed distance to the edge.
+ */
 float signedDistancePseudo(float2 p, EdgeSegment edge, int width)
 {
     if (edge.type == 0) {
@@ -308,6 +431,14 @@ float signedDistancePseudo(float2 p, EdgeSegment edge, int width)
     return 1e20f;
 }
 
+/**
+ * @brief Calculate the distance from a point to one edge for MSDF.
+ * @param pos Query position.
+ * @param edges Edge array.
+ * @param i Edge index.
+ * @param width Image width, used to choose the sample count.
+ * @return Distance to the edge.
+ */
 float calculateDistanceMSDF(float2 pos, __global const EdgeSegment* edges, unsigned int i, int width)
 {
     EdgeSegment edge = edges[i];
@@ -322,6 +453,17 @@ float calculateDistanceMSDF(float2 pos, __global const EdgeSegment* edges, unsig
     return distance;
 }
 
+/**
+ * @brief Generate per-channel raw MSDF distances from vector edges.
+ * @param edges Input edge array.
+ * @param edgeCount Number of edges.
+ * @param rawSdf Output interleaved RGBA distance buffer.
+ * @param insideTex Output per-channel inside/outside mask.
+ * @param width Image width.
+ * @param height Image height.
+ * @param sampleWidth Horizontal search radius.
+ * @param sampleHeight Vertical search radius.
+ */
 __kernel void msdf_outline(__global const EdgeSegment* edges, unsigned int edgeCount,
                            __global float* rawSdf,
                            __global unsigned int* insideTex,

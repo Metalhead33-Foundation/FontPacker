@@ -17,6 +17,9 @@
  */
 
 #version 430 core
+/**
+ * @brief OpenGL compute work-group size declaration.
+ */
 layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 /**
@@ -65,12 +68,20 @@ layout (binding = 4, std140) uniform Dimensions {
     int intendedSampleHeight; ///< Sample search height (used for max distance calculation)
 };
 
+/**
+ * @brief Select the Manhattan or Euclidean distance function.
+ */
 #ifdef USE_MANHATTAN_DISTANCE
     #define DISTANCE_FUNC(p1, p2) (abs((p1).x - (p2).x) + abs((p1).y - (p2).y))
 #else
     #define DISTANCE_FUNC(p1, p2) length((p1) - (p2))
 #endif
 
+/**
+ * @brief Unpack an RRGGBBXX edge color into normalized RGB components.
+ * @param packedRgb Packed edge color.
+ * @return RGB components in the range [0, 1].
+ */
 vec3 unpackRGB(uint packedRgb) {
     const float inv255 = 1.0 / 255.0;
     return vec3(
@@ -79,7 +90,16 @@ vec3 unpackRGB(uint packedRgb) {
         float( packedRgb        & 0xFF) * inv255
     );
 }
+/** @brief Largest finite 32-bit float, used as the initial minimum. */
 #define FLT_MAX 3.402823466e+38
+/**
+ * @brief Compute the distance from a point to a finite line segment.
+ * @param maxDistance Maximum search distance (unused; kept for interface symmetry).
+ * @param p Query point.
+ * @param p1 Segment start.
+ * @param p2 Segment end.
+ * @return Distance from @p p to the segment.
+ */
 float distanceToLineSegment(float maxDistance, vec2 p, vec2 p1, vec2 p2) {
     vec2 v = p2 - p1;
     vec2 w = p - p1;
@@ -91,6 +111,15 @@ float distanceToLineSegment(float maxDistance, vec2 p, vec2 p1, vec2 p2) {
     return DISTANCE_FUNC(p, p1 + b * v);
 }
 
+/**
+ * @brief Approximate the distance to a quadratic Bezier curve.
+ * @param maxDistance Maximum search distance.
+ * @param p Query point.
+ * @param p1 Curve start.
+ * @param p2 Control point.
+ * @param p3 Curve end.
+ * @return Distance from @p p to the sampled curve.
+ */
 float distanceToQuadraticBezier(float maxDistance, vec2 p, vec2 p1, vec2 p2, vec2 p3) {
     float minDist = FLT_MAX;
     int STEPS = imageSize(rawSdfTexture).x / 4;
@@ -104,6 +133,16 @@ float distanceToQuadraticBezier(float maxDistance, vec2 p, vec2 p1, vec2 p2, vec
     return minDist;
 }
 
+/**
+ * @brief Approximate the distance to a cubic Bezier curve.
+ * @param maxDistance Maximum search distance.
+ * @param p Query point.
+ * @param p1 Curve start.
+ * @param p2 First control point.
+ * @param p3 Second control point.
+ * @param p4 Curve end.
+ * @return Distance from @p p to the sampled curve.
+ */
 float distanceToCubicBezier(float maxDistance, vec2 p, vec2 p1, vec2 p2, vec2 p3, vec2 p4) {
     float minDist = FLT_MAX;
     int STEPS = imageSize(rawSdfTexture).x / 4;
@@ -117,6 +156,13 @@ float distanceToCubicBezier(float maxDistance, vec2 p, vec2 p1, vec2 p2, vec2 p3
     return minDist;
 }
 
+/**
+ * @brief Calculate the distance from a point to one edge.
+ * @param maxDistance Maximum search distance.
+ * @param pos Query position.
+ * @param i Edge index.
+ * @return Distance to the edge.
+ */
 float calculateDistance(float maxDistance, vec2 pos, uint i)
 {
     EdgeSegment edge = edges[i];
@@ -133,16 +179,40 @@ float calculateDistance(float maxDistance, vec2 pos, uint i)
     return distance;
 }
 
+/**
+ * @brief Linear interpolation between two 2D points.
+ * @param a Start point.
+ * @param b End point.
+ * @param t Interpolation parameter.
+ * @return Interpolated point.
+ */
 vec2 lerp(vec2 a, vec2 b, float t) {
     return mix(a, b, t);
 }
 
+/**
+ * @brief Evaluate a quadratic Bezier curve.
+ * @param p0 Curve start.
+ * @param p1 Control point.
+ * @param p2 Curve end.
+ * @param t Curve parameter.
+ * @return Point on the curve.
+ */
 vec2 bezier2(vec2 p0, vec2 p1, vec2 p2, float t) {
     vec2 a = lerp(p0, p1, t);
     vec2 b = lerp(p1, p2, t);
     return lerp(a, b, t);
 }
 
+/**
+ * @brief Evaluate a cubic Bezier curve.
+ * @param p0 Curve start.
+ * @param p1 First control point.
+ * @param p2 Second control point.
+ * @param p3 Curve end.
+ * @param t Curve parameter.
+ * @return Point on the curve.
+ */
 vec2 bezier3(vec2 p0, vec2 p1, vec2 p2, vec2 p3, float t) {
     vec2 a = lerp(p0, p1, t);
     vec2 b = lerp(p1, p2, t);
@@ -152,6 +222,13 @@ vec2 bezier3(vec2 p0, vec2 p1, vec2 p2, vec2 p3, float t) {
     return lerp(d, e, t);
 }
 
+/**
+ * @brief Distance from a point to the line through two points.
+ * @param p Query point.
+ * @param a First line point.
+ * @param b Second line point.
+ * @return Distance to the line.
+ */
 float distanceToLinePseudo(vec2 p, vec2 a, vec2 b) {
     vec2 pa = p - a;
     vec2 ba = b - a;
@@ -160,6 +237,16 @@ float distanceToLinePseudo(vec2 p, vec2 a, vec2 b) {
     return DISTANCE_FUNC(p, nearest);
 }
 
+/**
+ * @brief Find the closest pseudo-distance on a quadratic Bezier curve.
+ * @param p Query point.
+ * @param p0 Curve start.
+ * @param p1 Control point.
+ * @param p2 Curve end.
+ * @param[out] closestPoint Closest sampled point.
+ * @param[out] closestT Curve parameter of the closest sample.
+ * @return Distance to the closest sample.
+ */
 float distanceToQuadraticPseudo(vec2 p, vec2 p0, vec2 p1, vec2 p2, out vec2 closestPoint, out float closestT) {
     int SUBDIVISIONS = imageSize(rawSdfTexture).x / 4;
     float minDist = 1e20;
@@ -183,6 +270,17 @@ float distanceToQuadraticPseudo(vec2 p, vec2 p0, vec2 p1, vec2 p2, out vec2 clos
     return minDist;
 }
 
+/**
+ * @brief Find the closest pseudo-distance on a cubic Bezier curve.
+ * @param p Query point.
+ * @param p0 Curve start.
+ * @param p1 First control point.
+ * @param p2 Second control point.
+ * @param p3 Curve end.
+ * @param[out] closestPoint Closest sampled point.
+ * @param[out] closestT Curve parameter of the closest sample.
+ * @return Distance to the closest sample.
+ */
 float distanceToCubicPseudo(vec2 p, vec2 p0, vec2 p1, vec2 p2, vec2 p3, out vec2 closestPoint, out float closestT) {
     int SUBDIVISIONS = imageSize(rawSdfTexture).x / 4;
     float minDist = 1e20;
@@ -206,6 +304,12 @@ float distanceToCubicPseudo(vec2 p, vec2 p0, vec2 p1, vec2 p2, vec2 p3, out vec2
     return minDist;
 }
 
+/**
+ * @brief Compute a signed pseudo-distance to one edge.
+ * @param p Query point.
+ * @param edge Edge segment.
+ * @return Signed distance (positive on one side of the edge).
+ */
 float signedDistancePseudo(vec2 p, EdgeSegment edge) {
     if (edge.type == LINEAR) {
         vec2 a = edge.points[0];
@@ -255,6 +359,12 @@ float signedDistancePseudo(vec2 p, EdgeSegment edge) {
     return 1e20;
 }
 
+/**
+ * @brief Compute the winding contribution of one edge at a position.
+ * @param pos Position to test.
+ * @param i Edge index.
+ * @return Signed winding contribution (0, +1 or -1).
+ */
 int calculateWindingFor(vec2 pos, uint i) {
     int winding = 0;
     EdgeSegment edge = edges[i];
@@ -297,6 +407,12 @@ int calculateWindingFor(vec2 pos, uint i) {
     return winding;
 }
 
+/**
+ * @brief Compute the winding number for one contour.
+ * @param pos Position to test.
+ * @param shapeId Contour/shape ID.
+ * @return Winding number for that contour.
+ */
 int calculateWindingForContour(vec2 pos, int shapeId) {
     int winding = 0;
     for (int i = 0; i < edges.length(); ++i) {
@@ -307,6 +423,12 @@ int calculateWindingForContour(vec2 pos, int shapeId) {
     return winding;
 }
 
+/**
+ * @brief Compute the winding number for one MSDF channel.
+ * @param pos Position to test.
+ * @param channel Channel index (0=red, 1=green, 2=blue).
+ * @return Winding number for that channel.
+ */
 int calculateWindingForChannel(vec2 pos, int channel) {
     int winding = 0;
     for (int i = 0; i < edges.length(); ++i) {
@@ -321,6 +443,11 @@ int calculateWindingForChannel(vec2 pos, int channel) {
     return winding;
 }
 
+/**
+ * @brief Compute the total winding number across all edges.
+ * @param pos Position to test.
+ * @return Winding number (non-zero means inside).
+ */
 int calculateWinding(vec2 pos) {
     int windingNumber = 0;
     for (int i = 0; i < edges.length(); ++i) {
@@ -330,6 +457,11 @@ int calculateWinding(vec2 pos) {
     return windingNumber;
 }
 
+/**
+ * @brief Main compute shader entry point.
+ *
+ * Computes per-channel distances and winding masks for one output pixel.
+ */
 void main(void) {
     ivec2 threadId = ivec2(gl_GlobalInvocationID.xy);
     ivec2 dims = imageSize(rawSdfTexture);

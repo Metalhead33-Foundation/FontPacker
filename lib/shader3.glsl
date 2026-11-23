@@ -12,6 +12,9 @@
  */
 
 #version 430 core
+/**
+ * @brief OpenGL compute work-group size declaration.
+ */
 layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 /**
@@ -59,12 +62,23 @@ layout (binding = 4, std140) uniform Dimensions {
     int intendedSampleHeight; ///< Sample search height (used for max distance calculation)
 };
 
+/**
+ * @brief Select the Manhattan or Euclidean distance function.
+ */
 #ifdef USE_MANHATTAN_DISTANCE
     #define DISTANCE_FUNC(p1, p2) (abs((p1).x - (p2).x) + abs((p1).y - (p2).y))
 #else
     #define DISTANCE_FUNC(p1, p2) length((p1) - (p2))
 #endif
 
+/**
+ * @brief Compute the distance from a point to a finite line segment.
+ * @param maxDistance Maximum search distance (unused; kept for interface symmetry).
+ * @param p Query point.
+ * @param p1 Segment start.
+ * @param p2 Segment end.
+ * @return Distance from @p p to the segment.
+ */
 float distanceToLineSegment(float maxDistance, vec2 p, vec2 p1, vec2 p2) {
     vec2 v = p2 - p1;
     vec2 w = p - p1;
@@ -76,6 +90,15 @@ float distanceToLineSegment(float maxDistance, vec2 p, vec2 p1, vec2 p2) {
     return DISTANCE_FUNC(p, p1 + b * v);
 }
 
+/**
+ * @brief Approximate the distance to a quadratic Bezier curve.
+ * @param maxDistance Initial upper bound for the distance.
+ * @param p Query point.
+ * @param p1 Curve start.
+ * @param p2 Control point.
+ * @param p3 Curve end.
+ * @return Distance from @p p to the sampled curve.
+ */
 float distanceToQuadraticBezier(float maxDistance, vec2 p, vec2 p1, vec2 p2, vec2 p3) {
     float minDist = maxDistance;
     int STEPS = imageSize(rawSdfTexture).x / 4;
@@ -88,6 +111,16 @@ float distanceToQuadraticBezier(float maxDistance, vec2 p, vec2 p1, vec2 p2, vec
     return minDist;
 }
 
+/**
+ * @brief Approximate the distance to a cubic Bezier curve.
+ * @param maxDistance Initial upper bound for the distance.
+ * @param p Query point.
+ * @param p1 Curve start.
+ * @param p2 First control point.
+ * @param p3 Second control point.
+ * @param p4 Curve end.
+ * @return Distance from @p p to the sampled curve.
+ */
 float distanceToCubicBezier(float maxDistance, vec2 p, vec2 p1, vec2 p2, vec2 p3, vec2 p4) {
     float minDist = maxDistance;
     int STEPS = imageSize(rawSdfTexture).x / 4;
@@ -100,6 +133,12 @@ float distanceToCubicBezier(float maxDistance, vec2 p, vec2 p1, vec2 p2, vec2 p3
     return minDist;
 }
 
+/**
+ * @brief Compute the winding contribution of one edge at a position.
+ * @param pos Position to test.
+ * @param i Index of the edge in the edge buffer.
+ * @return Signed winding contribution (0, +1 or -1).
+ */
 int calculateWindingFor(vec2 pos, uint i) {
     int winding = 0;
     EdgeSegment edge = edges[i];

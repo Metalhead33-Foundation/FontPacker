@@ -54,3 +54,39 @@ TEST_CASE("OpenCL bitmap backend produces a non-empty SDF", "[opencl]")
 	CHECK(qGray(result.pixel(8, 8)) > 128);
 	CHECK(qGray(result.pixel(0, 0)) < 128);
 }
+
+TEST_CASE("OpenCL kernels compile in Euclidean and Manhattan modes", "[opencl]")
+{
+	for(DistanceType distance : {Euclidean, Manhattan}) {
+		SDFGenerationArguments args;
+		args.mode = OPENCL;
+		args.type = SDF;
+		args.distType = distance;
+		args.internalProcessSize = 16;
+		args.intendedSize = 0;
+		args.padding = 2;
+		args.samples_to_check_x = 0;
+		args.samples_to_check_y = 0;
+		args.char_min = 0;
+		args.char_max = 1;
+		args.msdfgenColouring = false;
+		args.invert = false;
+		args.imageFormat = QByteArrayLiteral("PNG");
+		args.forceRaster = false;
+		args.gammaCorrect = false;
+		args.maximizeInsteadOfAverage = false;
+		args.midpointAdjustment = std::nullopt;
+		args.createMipmaps = false;
+
+		try {
+			SdfGenerationOpenCL context(args);
+			(void)context;
+		} catch(const std::exception& error) {
+			const QString message = QString::fromUtf8(error.what());
+			if(message.contains(QStringLiteral("No OpenCL"))) {
+				SKIP("OpenCL runtime/device is not available");
+			}
+			throw;
+		}
+	}
+}

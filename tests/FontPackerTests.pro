@@ -18,7 +18,8 @@ LIBS += $$system(pkg-config --libs OpenCL) -lfreetype -lharfbuzz -lsvgtiny -fope
 SOURCES += \
     main.cpp \
     test_containers.cpp \
-    test_opencl.cpp
+    test_opencl.cpp \
+    test_gl_shaders.cpp
 
 HEADERS += \
     test_helpers.hpp
