@@ -6,5 +6,6 @@
         <file>shader3.glsl</file>
         <file>shader3_msdf.glsl</file>
         <file>msdf_fixer.glsl</file>
+        <file>sdf_opencl.cl</file>
     </qresource>
 </RCC>

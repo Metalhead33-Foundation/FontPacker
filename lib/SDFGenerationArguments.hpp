@@ -24,7 +24,7 @@
 enum SDfGenerationMode {
 	SOFTWARE,        ///< CPU implementation (single-channel bitmap SDF only at present).
 	OPENGL_COMPUTE,  ///< OpenGL 4.3+ compute-shader implementation (outline and bitmap).
-	OPENCL           ///< Declared, not implemented; selecting it throws.
+	OPENCL           ///< OpenCL 1.2 buffer-based GPU implementation.
 };
 
 /**
@@ -73,7 +73,7 @@ enum SvgTreatment {
  * @see BINARY_FORMAT.md, SdfGenerationContext
  */
 struct SDFGenerationArguments {
-	SDfGenerationMode mode = SOFTWARE;            ///< Backend to use; `Software` by default, `OpenCL` throws.
+	SDfGenerationMode mode = SOFTWARE;            ///< Backend to use; `Software` by default.
 	SvgTreatment svgTreatment = ShapesAllInOne;   ///< Grouping of SVG shapes into output glyphs.
 	SDFType type = SDF;                           ///< Distance-field flavour to generate.
 	DistanceType distType = Manhattan;            ///< Distance norm; the CLI default is Manhattan for Software and Euclidean for OpenGL.

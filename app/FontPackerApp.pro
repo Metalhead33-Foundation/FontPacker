@@ -5,7 +5,7 @@ TEMPLATE = app
 TARGET = FontPacker
 
 INCLUDEPATH += $$PWD $$PWD/../lib /usr/include/freetype2 /usr/include/harfbuzz
-QMAKE_CXXFLAGS += -fopenmp
+QMAKE_CXXFLAGS += $$system(pkg-config --cflags OpenCL) -fopenmp
 QMAKE_CFLAGS += -fopenmp
 QMAKE_LFLAGS += -fopenmp
 DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000
@@ -13,7 +13,7 @@ DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000
 # Static library produced by lib/FontPackerLib.pro. The extra -L paths cover
 # both shadow and in-source builds.
 LIBS += -L$$OUT_PWD/../lib -L$$OUT_PWD -L$$PWD/.. -lFontPackerCore
-LIBS += -lfreetype -lharfbuzz -lsvgtiny -fopenmp
+LIBS += $$system(pkg-config --libs OpenCL) -lfreetype -lharfbuzz -lsvgtiny -fopenmp
 
 SOURCES += \
     CQTOpenGLLuaSyntaxHighlighter.cpp \

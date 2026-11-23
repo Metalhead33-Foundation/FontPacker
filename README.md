@@ -102,7 +102,7 @@ Both backends normalise each generated image independently: `0.5` is the contour
 ## Features
 
 - **SDF flavours:** `SDF`, `MSDF`, `MSDFA`.
-- **Backends:** `Software` (CPU) and `OpenGL` (compute shaders). `OpenCL` is declared but not implemented.
+- **Backends:** `Software` (CPU), `OpenGL` (compute shaders) and `OpenCL 1.2` (buffer-based kernels).
 - **Inputs:** TrueType/OpenType fonts, SVG, `.wodf`/CBOR fonts, `.wodi`/CBOR vector images.
 - **Repacking:** loaded `.wodf`/`.wodi` containers can be re-encoded (`--format`) and rescaled (`--intendedsize`); unsupported generation options are rejected instead of ignored.
 - **Formats:** `.wodf` version 3 (versions 1 and 2 are still readable), `.wodi` version 1.
@@ -120,6 +120,7 @@ Both backends normalise each generated image independently: `0.5` is the contour
 | libsvgtiny | SVG parsing |
 | GLM | vector math in the generation code |
 | OpenMP | the software SDF loop is parallelised with `#pragma omp` |
+| OpenCL 1.2 | `pkg-config --cflags --libs OpenCL`; optional at runtime, required by the OpenCL backend |
 | Catch2 3 | unit tests (`pkg-config --cflags --libs catch2`) |
 | Doxygen (optional) | only for the API documentation; see below |
 
@@ -153,6 +154,16 @@ The OpenGL shaders are compiled into the **library** as Qt resources. The execut
 ### Unit tests
 
 `tests/FontPackerTests.pro` builds a Catch2 3 fixture linked against `FontPackerCore` and uses the system Catch2 from `pkg-config --cflags --libs catch2`. The tests exercise binary and CBOR serialization of `StoredCharacter`, `PreprocessedFontFace` and `StoredVectorImage`, including version 1/2/3 compatibility, float/26.6 advances, legacy SVG advances, invalid glyphs and in-memory repacking. All serialization tests use `QBuffer`, so no temporary files are written; `QFile` and `QBuffer` share the same `QIODevice` interface. Run them with `make check` from the shadow build directory, or execute `tests/FontPackerTests` directly with a Catch2 reporter.
+
+### OpenCL backend
+
+`--mode OpenCL` uses OpenCL 1.2 kernels and ordinary buffers, so it needs no image, byte-addressable-store or GL-sharing extensions. The kernels implement the same bitmap SDF, outline SDF and outline MSDF/MSDFA algorithms as the GL backend and are compiled with:
+
+```text
+-cl-fast-relaxed-math -cl-unsafe-math-optimizations -cl-no-signed-zeros
+```
+
+The targets are correctness and performance, not byte equality with OpenGL; small numeric differences are expected (and may grow across different GPU drivers). The bitmap/raster path currently supports SDF only; use vector outlines for MSDF/MSDFA. The existing OpenGL implementation is unchanged.
 
 ### Documentation
 
@@ -232,9 +243,9 @@ FontPacker --inspect font.cbor
 
 | Argument | Values | Description | Default |
 |---|---|---|---|
-| `--mode` | `Software`, `OpenGL`, `OpenCL` | Backend. `OpenCL` throws at runtime. | `Software` |
+| `--mode` | `Software`, `OpenGL`, `OpenCL` | Backend. | `Software` |
 | `--type` | `SDF`, `MSDF`, `MSDFA` | Distance-field flavour. | `SDF` |
-| `--dist` | `Manhattan`, `Euclidean` | Distance norm. | `Manhattan` for Software, `Euclidean` for OpenGL |
+| `--dist` | `Manhattan`, `Euclidean` | Distance norm. | `Manhattan` for Software, `Euclidean` for OpenGL/OpenCL |
 | `--internalprocesssize <n>` | integer | `L`: generation square size. | `1024` (`4096` with `HIRES`) |
 | `--intendedsize <n>` | integer | `S`: stored square size after downsampling. `0` disables downsampling. | `0` |
 | `--padding <n>` | integer | `P`: border on each side, inside `L`. Must satisfy `2P < L`. | `100` (`400` with `HIRES`) |
@@ -264,7 +275,7 @@ Flags (presence enables them; they take no value):
 - `--padding` is the SDF search radius as well as the geometric border: `samples_to_check_*`, when set, replace it for the search, but the geometry always uses `P`.
 - `--format` selects the image codec only; quality/compression settings are Qt defaults.
 - `--invert`, `--gammacorrect` and `--midpointadjustment` are applied by the OpenGL readback path only; the Software backend silently ignores them (verified: identical output files with and without the flags). `--maximizeinsteadofaverage` is shared by both backends.
-- `--type MSDF`/`MSDFA` is not implemented by the software backend at all; use `--mode OpenGL`.
+- `--type MSDF`/`MSDFA` is not implemented by the software raster backend; use `--mode OpenGL` or `--mode OpenCL` with vector outlines.
 
 ---
 
@@ -301,7 +312,7 @@ FontPacker --nogui --insvg icon.svg \
   --outvectorbin icon_sdf.wodi
 ```
 
-SVG processing needs the OpenGL backend, because the software outline renderer is not implemented.
+SVG processing needs the OpenGL or OpenCL backend, because the software outline renderer is not implemented.
 
 ### D. SVG stored as a font face
 
@@ -361,13 +372,14 @@ Important points for consumers:
 
 These are current properties of the code, documented so that users and automated tools do not make wrong assumptions.
 
-1. **Software mode cannot generate from outlines.** `SdfGenerationContextSoft::produceOutlineSdf()` is unimplemented (empty function body). Outline fonts and SVG therefore require `--mode OpenGL`; TrueType/OpenType fonts can be used with Software only together with `--forceraster`.
-2. **Software mode emits single-channel SDFs only.** `SdfGenerationContextSoft::produceBitmapSdf()` always builds a `QImage::Format_Grayscale8`; `--type MSDF`/`MSDFA` needs the OpenGL backend.
-3. **OpenCL is declared but not implemented.** `--mode OpenCL` throws `Unsupported mode!`.
+1. **Software mode cannot generate from outlines.** `SdfGenerationContextSoft::produceOutlineSdf()` is unimplemented (empty function body). Outline fonts and SVG therefore require `--mode OpenGL` or `--mode OpenCL`; TrueType/OpenType fonts can be used with Software only together with `--forceraster`.
+2. **Software mode emits single-channel SDFs only.** `SdfGenerationContextSoft::produceBitmapSdf()` always builds a `QImage::Format_Grayscale8`; `--type MSDF`/`MSDFA` needs the OpenGL or OpenCL backend.
+3. **The OpenCL raster path supports SDF only.** Bitmap MSDF/MSDFA requires vector outlines; use `--mode OpenGL` or do not combine `--forceraster` with MSDF.
 4. **Each image is normalised independently.** A value of `0.6` does not mean the same pixel distance in two different glyphs; `distanceRangeX/Y` is only the nominal search radius. This is accepted by design.
 5. **`imageFormat` is limited to 7 characters.** Longer codec names are truncated and zero padded. This is accepted by design.
 6. **HIRES changes defaults silently.** With `DEFINES += HIRES`, `L` defaults to 4096 and `P` to 400 instead of 1024/100. This is accepted by design.
-7. **The Software backend ignores value transforms.** `--invert`, `--gammacorrect` and `--midpointadjustment` are only implemented in `SdfGenerationGL::fetchSdfFromGPU` / `fetchMSDFFromGPU`. The software distance pass normalises but does not transform the values.
+7. **The Software backend ignores value transforms.** `--invert`, `--gammacorrect` and `--midpointadjustment` are implemented by the GL/OpenCL readback paths; the software distance pass normalises but does not transform the values.
+8. **OpenGL `--dist Manhattan` is currently ignored.** `SdfGenerationGL` inserts `#define USE_MANHATTAN_DISTANCE` after the first newline of each shader; because the shaders start with a block comment, the define is ignored and the GL backend produces Euclidean output. The OpenCL backend applies Manhattan correctly. The GL code was intentionally left unchanged.
 
 ---
 

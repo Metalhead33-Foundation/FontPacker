@@ -29,6 +29,7 @@
 #include "ConstStrings.hpp"
 #include "SdfGenerationContext.hpp"
 #include "SdfGenerationGL.hpp"
+#include "SdfGenerationOpenCL.hpp"
 #include "SdfGenerationContextSoft.hpp"
 #include "MainWindow.hpp"
 
@@ -334,8 +335,7 @@ int main(int argc, char *argv[])
 				switch (sdfArgs.mode) {
 					case SOFTWARE: ctx = std::make_unique<SdfGenerationContextSoft>(); break;
 					case OPENGL_COMPUTE: ctx = std::make_unique<SdfGenerationGL>(sdfArgs); break;
-					case OPENCL: throw std::runtime_error("Unsupported mode!");
-						break;
+					case OPENCL: ctx = std::make_unique<SdfGenerationOpenCL>(sdfArgs); break;
 				}
 				ctx->processFont(fontface,sdfArgs);
 				hasFontFace = true;
@@ -348,8 +348,7 @@ int main(int argc, char *argv[])
 				switch (sdfArgs.mode) {
 					case SOFTWARE: ctx = std::make_unique<SdfGenerationContextSoft>(); break;
 					case OPENGL_COMPUTE: ctx = std::make_unique<SdfGenerationGL>(sdfArgs); break;
-					case OPENCL: throw std::runtime_error("Unsupported mode!");
-						break;
+					case OPENCL: ctx = std::make_unique<SdfGenerationOpenCL>(sdfArgs); break;
 				}
 				QFile svgFile(svgpath);
 				if( svgFile.open(QFile::ReadOnly) ) {

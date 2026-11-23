@@ -6,7 +6,7 @@ TARGET = FontPackerCore
 DESTDIR = $$OUT_PWD
 
 INCLUDEPATH += $$PWD /usr/include/freetype2 /usr/include/harfbuzz
-QMAKE_CXXFLAGS += -fopenmp
+QMAKE_CXXFLAGS += $$system(pkg-config --cflags OpenCL) -fopenmp
 QMAKE_CFLAGS += -fopenmp
 DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000
 
@@ -21,6 +21,7 @@ SOURCES += \
     SdfGenerationContext.cpp \
     SdfGenerationContextSoft.cpp \
     SdfGenerationGL.cpp \
+    SdfGenerationOpenCL.cpp \
     StoredCharacter.cpp \
     StoredVectorImage.cpp
 
@@ -37,6 +38,7 @@ HEADERS += \
     SdfGenerationContext.hpp \
     SdfGenerationContextSoft.hpp \
     SdfGenerationGL.hpp \
+    SdfGenerationOpenCL.hpp \
     StoredCharacter.hpp \
     StoredVectorImage.hpp
 
