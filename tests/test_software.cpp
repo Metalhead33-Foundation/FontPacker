@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 
 namespace {
 
@@ -54,6 +55,19 @@ FontOutlineDecompositionContext rectangleOutline()
 	return context;
 }
 
+/// Two single-edge contours, the second one ending on the very last edge of the outline.
+/// Such a contour used to map to an empty span because the upper bound was clamped to
+/// `edges.size() - 1` instead of `edges.size()`.
+FontOutlineDecompositionContext trailingSingleEdgeContours()
+{
+	FontOutlineDecompositionContext context;
+	addLine(context, 8.0f, 8.0f, 24.0f, 8.0f);
+	context.edges.back().contourId = 0;
+	addLine(context, 8.0f, 24.0f, 24.0f, 24.0f);
+	context.edges.back().contourId = 1;
+	return context;
+}
+
 }
 
 TEST_CASE("Software outline SDF generates inside and outside values", "[software]")
@@ -95,4 +109,34 @@ TEST_CASE("Software bitmap SDF honours value transforms", "[software]")
 	const QImage inverted = context.produceBitmapSdf(source, invertedArgs);
 	REQUIRE(normal.size() == inverted.size());
 	CHECK(normal != inverted);
+}
+
+TEST_CASE("Contour spans keep the last edge of the outline", "[outline]")
+{
+	const FontOutlineDecompositionContext context = trailingSingleEdgeContours();
+	REQUIRE(context.edges.size() == 2);
+
+	const std::span<const EdgeSegment> first = context.getEdgeSegmentsForContour({0, 0});
+	const std::span<const EdgeSegment> last = context.getEdgeSegmentsForContour({1, 1});
+	REQUIRE(first.size() == 1);
+	REQUIRE(last.size() == 1);
+	CHECK(&last.front() == &context.edges.back());
+}
+
+TEST_CASE("Contour spans are empty for degenerate definitions", "[outline]")
+{
+	const FontOutlineDecompositionContext context = trailingSingleEdgeContours();
+	CHECK(context.getEdgeSegmentsForContour({1, 0}).empty());
+	CHECK(context.getEdgeSegmentsForContour({2, 5}).empty());
+
+	FontOutlineDecompositionContext empty;
+	CHECK(empty.getEdgeSegmentsForContour({0, 0}).empty());
+}
+
+TEST_CASE("MSDF edge colouring handles a contour ending on the last edge", "[outline]")
+{
+	FontOutlineDecompositionContext context = trailingSingleEdgeContours();
+	REQUIRE_NOTHROW(context.assignColoursMsdfgen());
+	for(const EdgeSegment& edge : context.edges)
+		CHECK(edge.clr != 0u); // Palette colours are never BLACK here.
 }

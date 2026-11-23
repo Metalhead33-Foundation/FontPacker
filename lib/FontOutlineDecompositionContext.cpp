@@ -6,6 +6,7 @@
 #include <cassert>
 #include <stdexcept>
 #include <map>
+#include <utility>
 
 #define EPSILON std::numeric_limits<float>::epsilon()
 
@@ -438,14 +439,42 @@ void FontOutlineDecompositionContext::normalizeContour(std::vector<EdgeSegment>&
 	}
 }
 
+/**
+ * @brief Convert an inclusive [first, second] contour definition into a half-open [begin, end) edge range.
+ *
+ * The upper bound must be clamped to edges.size() (one past the last valid edge), not to
+ * edges.size()-1: otherwise the final edge of the very last contour is dropped, and a contour
+ * consisting of only that edge becomes an empty span (which used to crash span::back()).
+ *
+ * @param contour Inclusive edge index range.
+ * @param edgeCount Number of edges available.
+ * @return Pair of clamped half-open range bounds; empty when nothing is left.
+ */
+static std::pair<size_t, size_t> contourEdgeRange(const FontOutlineDecompositionContext::ContourDefinition& contour, size_t edgeCount)
+{
+	if(edgeCount == 0 || contour.second < 0 || contour.first > contour.second)
+		return { 0, 0 };
+	const size_t begin = static_cast<size_t>(std::max(contour.first, 0));
+	const size_t end = std::min(static_cast<size_t>(contour.second) + 1, edgeCount);
+	if(begin >= end)
+		return { 0, 0 };
+	return { begin, end };
+}
+
 std::span<EdgeSegment> FontOutlineDecompositionContext::getEdgeSegmentsForContour(const ContourDefinition& contour)
 {
-	return std::span<EdgeSegment>(&edges[std::max(contour.first,0)], &edges[std::min(contour.second+1,static_cast<int>(edges.size()-1))]);
+	const auto [begin, end] = contourEdgeRange(contour, edges.size());
+	if(begin == end)
+		return {};
+	return std::span<EdgeSegment>(edges.data() + begin, end - begin);
 }
 
 std::span<const EdgeSegment> FontOutlineDecompositionContext::getEdgeSegmentsForContour(const ContourDefinition& contour) const
 {
-	return std::span<const EdgeSegment>(&edges[std::max(contour.first,0)], &edges[std::min(contour.second+1,static_cast<int>(edges.size()-1))]);
+	const auto [begin, end] = contourEdgeRange(contour, edges.size());
+	if(begin == end)
+		return {};
+	return std::span<const EdgeSegment>(edges.data() + begin, end - begin);
 }
 
 FontOutlineDecompositionContext::ContourVector FontOutlineDecompositionContext::produceContourVecetor() const
@@ -1345,6 +1374,8 @@ void FontOutlineDecompositionContext::assignColoursMsdfgen(double angleThreshold
 	auto contours = produceContourVecetor();
 	for(const auto& contour : contours) {
 		auto edges = getEdgeSegmentsForContour(contour);
+		if(edges.empty())
+			continue; // Degenerate contour definition - nothing to colour.
 		// Black magic to count corners?
 		{
 			corners.clear();
