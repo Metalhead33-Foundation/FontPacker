@@ -17,11 +17,9 @@
  * Implements SDF generation using CPU algorithms. Uses distance field
  * calculations with configurable distance metrics (Manhattan or Euclidean).
  *
- * @warning Only produceBitmapSdf() is implemented. produceOutlineSdf() has an
- *          empty body in the current tree, so fonts with vector outlines and
- *          SVG input require the OpenGL backend; use `--forceraster` to route
- *          TrueType/OpenType glyphs through the bitmap path. This backend also
- *          emits single-channel 8-bit SDF images only, regardless of `type`.
+ * The backend implements bitmap SDF/MSDF/MSDFA and outline SDF/MSDF/MSDFA.
+ * Fills, value transforms (`invert`, `gammaCorrect`, `midpointAdjustment`) and
+ * OpenMP-parallel distance evaluation are handled here, so no GPU is required.
  */
 class SdfGenerationContextSoft : public SdfGenerationContext
 {
@@ -41,8 +39,7 @@ public:
 	
 	/**
 	 * @brief Generate SDF from font outline decomposition using CPU algorithms.
-	 * @warning Not implemented in the current tree (empty body); calling it is
-	 *          undefined behaviour. Use the OpenGL backend for outlines.
+	 * @note Uses the same edge sampling and winding rules as the GPU backends.
 	 * @param source Font outline decomposition context.
 	 * @param args Generation arguments.
 	 * @return Generated SDF image.

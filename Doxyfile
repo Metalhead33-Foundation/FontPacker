@@ -121,7 +121,7 @@ WARN_AS_ERROR          = NO
 WARN_FORMAT            = "$file:$line: $text"
 WARN_LOGFILE           =
 
-INPUT                  = lib app README.md BINARY_FORMAT.md
+INPUT                  = lib app docs README.md BINARY_FORMAT.md
 INPUT_ENCODING         = UTF-8
 FILE_PATTERNS          = *.hpp *.md *.glsl *.cl *.hlsl
 RECURSIVE              = YES

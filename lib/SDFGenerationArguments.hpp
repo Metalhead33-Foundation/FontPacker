@@ -22,7 +22,7 @@
  * This value is a runtime choice and is never serialized.
  */
 enum SDfGenerationMode {
-	SOFTWARE,        ///< CPU implementation (single-channel bitmap SDF only at present).
+	SOFTWARE,        ///< CPU implementation (bitmap and outline SDF/MSDF/MSDFA).
 	OPENGL_COMPUTE,  ///< OpenGL 4.3+ compute-shader implementation (outline and bitmap).
 	OPENCL           ///< OpenCL 1.2 buffer-based GPU implementation.
 };
@@ -88,7 +88,7 @@ struct SDFGenerationArguments {
 	bool msdfgenColouring;                        ///< Use the msdfgen-style edge colour assignment for MSDF.
 	bool invert;                                  ///< Invert the final distance values (`1 - x`).
 	QByteArray imageFormat;                       ///< Encoded image codec passed to QImage::save (upper-cased); stored in the container's 8-byte field.
-	bool forceRaster;                             ///< Rasterise glyphs instead of using the outline path; required for Software mode.
+	bool forceRaster;                             ///< Rasterise glyphs instead of using the outline path.
 bool gammaCorrect;                            ///< Apply the cubic gamma adjustment around 0.5.
 bool maximizeInsteadOfAverage;                ///< Use max instead of average when downsampling.
 std::optional<float> midpointAdjustment;      ///< Optional divisor baked into the distance values; must be positive when present.

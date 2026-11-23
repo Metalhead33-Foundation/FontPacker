@@ -1,3 +1,8 @@
+/**
+ * @file QDataStreamHelper.cpp
+ * @brief Implementation of the length-prefixed UTF-8 container strings.
+ */
+
 #include "QDataStreamHelper.hpp"
 
 void saveToDatastreamAsUtf8(QDataStream& stream, const QString& str)

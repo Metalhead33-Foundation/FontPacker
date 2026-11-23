@@ -15,6 +15,9 @@
 #include "StoredVectorImage.hpp"
 #include <memory>
 #include <vector>
+
+class QComboBox;
+class QPushButton;
 #include "CQTOpenGLLuaSyntaxHighlighter.hpp"
 
 namespace Ui {
@@ -129,6 +132,21 @@ private slots:
 	/// @brief Compile the shader editor contents and upload the fragment shader.
 	void on_glslCompileBtn_clicked();
 
+	/// @brief Open a shader file into the GLSL or HLSL editor.
+	void onLoadShaderBtnClicked();
+
+	/// @brief Save the active shader editor contents to a file.
+	void onSaveShaderBtnClicked();
+
+	/// @brief Show the short in-application shader tutorial.
+	void onShaderTutorialBtnClicked();
+
+	/**
+	 * @brief Load the selected built-in shader example into both editors.
+	 * @param index Example index.
+	 */
+	void onShaderExampleComboBoxCurrentIndexChanged(int index);
+
 	/**
 	 * @brief React to the second preview's zoom slider.
 	 * @param value New slider value.
@@ -156,6 +174,9 @@ private slots:
 	/// @brief Re-upload the current texture and repaint the OpenGL preview.
 	void repaintGl();
 
+	/// @brief Transpile the HLSL editor contents into the GLSL editor.
+	void onHlsl2GlslBtnClicked();
+
 private:
 	std::vector<uint32_t> glyphsVector;          ///< Code points of the loaded glyphs, in display order.
 	Ui::MainWindow *ui;                          ///< Generated UI object.
@@ -164,6 +185,14 @@ private:
 	std::unique_ptr<StoredVectorImage> vector_face;  ///< Loaded vector image, if any.
 	QColor clr;                                  ///< Colour currently passed to the preview shader.
 	argos::CQTOpenGLLuaSyntaxHighlighter* highlighter; ///< Highlighter attached to the shader editor.
+
+	QComboBox* shaderExampleComboBox = nullptr; ///< Built-in example selector.
+	QPushButton* shaderTutorialBtn = nullptr;   ///< Short tutorial popup button.
+	QPushButton* shaderLoadBtn = nullptr;       ///< Shader file load button.
+	QPushButton* shaderSaveBtn = nullptr;       ///< Shader file save button.
+
+	/** @brief Create the shader-tab helper controls programmatically. */
+	void setupShaderTools();
 
 	/**
 	 * @brief Load a font face from a CBOR file.

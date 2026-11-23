@@ -3,13 +3,14 @@
 FontPacker is an offline packer that turns TrueType/OpenType fonts and SVG files into signed distance field (SDF) assets:
 
 - single-channel **SDF**, multi-channel **MSDF**, and **MSDFA** (MSDF with alpha);
-- CPU (software) and OpenGL 4.3+ compute-shader generation;
+- CPU (software), OpenGL 4.3+ compute-shader, and OpenCL 1.2 generation;
 - binary `.wodf` / `.wodi` containers and their CBOR equivalents;
 - FreeType-style layout metrics stored next to every glyph, so the runtime never needs FreeType.
 
 | Document | Contents |
 |---|---|
 | **README.md** (this file) | what the tool does, how a package is built, build/run instructions, option reference |
+| [docs/SHADER_TUTORIAL.md](docs/SHADER_TUTORIAL.md) | shader preview conventions, GLSL/MSDF examples, HLSL-to-GLSL transpilation |
 | [BINARY_FORMAT.md](BINARY_FORMAT.md) | complete byte-level specification of `.wodf` and `.wodi`, geometry formulas, metric provenance, CBOR mapping, gotchas |
 | Doxygen site | API reference generated from the headers and shader sources (see the Documentation section below) |
 
@@ -108,7 +109,7 @@ Both backends normalise each generated image independently: `0.5` is the contour
 - **Formats:** `.wodf` version 3 (versions 1 and 2 are still readable), `.wodi` version 1.
 - **Outputs:** `.wodf`, CBOR font, individual glyph image files, `.wodi`, CBOR vector image.
 - **Distance metrics:** Manhattan (L1) and Euclidean (L2).
-- **Extras (OpenGL backend unless noted):** msdfgen-style edge colouring, invert, gamma correction, midpoint adjustment, max-downsampling (both backends), encoded mip chains for `.wodi`.
+- **Extras:** msdfgen-style edge colouring, invert, gamma correction, midpoint adjustment, max-downsampling, encoded mip chains for `.wodi`. These are implemented by all three backends.
 
 ## Requirements
 
@@ -121,6 +122,8 @@ Both backends normalise each generated image independently: `0.5` is the contour
 | GLM | vector math in the generation code |
 | OpenMP | the software SDF loop is parallelised with `#pragma omp` |
 | OpenCL 1.2 | `pkg-config --cflags --libs OpenCL`; optional at runtime, required by the OpenCL backend |
+| glslang | HLSL-to-SPIR-V for the Shader test tab; `-lglslang -lSPIRV -lglslang-default-resource-limits` |
+| SPIRV-Cross | SPIR-V-to-GLSL for the Shader test tab; `-L/usr/local/lib64 -lspirv-cross-glsl -lspirv-cross-core` |
 | Catch2 3 | unit tests (`pkg-config --cflags --libs catch2`) |
 | Doxygen (optional) | only for the API documentation; see below |
 
@@ -164,6 +167,15 @@ The OpenGL shaders are compiled into the **library** as Qt resources. The execut
 ```
 
 The targets are correctness and performance, not byte equality with OpenGL; small numeric differences are expected (and may grow across different GPU drivers). The bitmap/raster path currently supports SDF only; use vector outlines for MSDF/MSDFA. The OpenGL backend is otherwise unchanged; its Manhattan define now has a fix at a legal preprocessor position.
+
+### Shader preview and HLSL
+
+The **Shader test** tab previews the selected SDF/MSDF/MSDFA texture with a
+user fragment shader. It includes GLSL examples, an in-app tutorial popup, and
+HLSL input translated by glslang (HLSL -> SPIR-V) and SPIRV-Cross
+(SPIR-V -> GLSL 3.30). See [docs/SHADER_TUTORIAL.md](docs/SHADER_TUTORIAL.md).
+The HLSL front-end of glslang is deprecated upstream; the converter is isolated
+behind `lib/HlslToGlsl.hpp` for a later DXC/Slang replacement.
 
 ### Documentation
 
@@ -254,17 +266,17 @@ FontPacker --inspect font.cbor
 | `--mincharcode <n>` | integer | First Unicode code point to process (inclusive). | `0` |
 | `--maxcharcode <n>` | integer | One past the last code point to process (exclusive). | `0xE007F` |
 | `--format <name>` | string | Encoded image format passed to `QImage::save`. Upper-cased, max 7 characters. | `PNG` |
-| `--midpointadjustment <v>` | float | Bakes `clamp(value / v, 0, 1)` into the SDF. `v` must be positive. **OpenGL backend only.** | unset |
+| `--midpointadjustment <v>` | float | Bakes `clamp(value / v, 0, 1)` into the SDF. `v` must be positive. | unset |
 
 Flags (presence enables them; they take no value):
 
 | Flag | Effect |
 |---|---|
-| `--forceraster` | Rasterise glyphs and run the bitmap SDF path instead of the outline path. **Required for fonts in Software mode** (see limitations). |
-| `--invert` | Invert the SDF values (`1 - x`). **OpenGL backend only.** |
-| `--gammacorrect` | Apply the cubic gamma adjustment around 0.5. **OpenGL backend only.** |
+| `--forceraster` | Rasterise glyphs and run the bitmap SDF/MSDF path instead of the outline path. |
+| `--invert` | Invert the SDF values (`1 - x`). |
+| `--gammacorrect` | Apply the cubic gamma adjustment around 0.5. |
 | `--maximizeinsteadofaverage` | Use max instead of average when halving images. |
-| `--msdfgencoloring` | Use the msdfgen-style edge colour assignment for MSDF. Requires the OpenGL backend. |
+| `--msdfgencoloring` | Use the msdfgen-style edge colour assignment for MSDF. |
 | `--createmipmaps` | Store every halving level in a `.wodi`. Ignored for `.wodf`. |
 
 > **Code-point range.** The loop is half-open: `for (c = mincharcode; c < maxcharcode; ++c)`. To emit `A` and `B` (U+0041, U+0042), use `--mincharcode 65 --maxcharcode 67`. Leave both unset to process the default range `0 .. 0xE007E`.
@@ -274,8 +286,8 @@ Flags (presence enables them; they take no value):
 - `--intendedsize` changes only the stored resolution, never the generation resolution. A stored size larger than `L` is pointless; a very small `S` with a large `P` can make `P_final` exceed `S/2`, which leaves no content box. Keep `P < L/2` and prefer `P` to be a multiple of `L/S`.
 - `--padding` is the SDF search radius as well as the geometric border: `samples_to_check_*`, when set, replace it for the search, but the geometry always uses `P`.
 - `--format` selects the image codec only; quality/compression settings are Qt defaults.
-- `--invert`, `--gammacorrect` and `--midpointadjustment` are applied by the OpenGL readback path only; the Software backend silently ignores them (verified: identical output files with and without the flags). `--maximizeinsteadofaverage` is shared by both backends.
-- `--type MSDF`/`MSDFA` is not implemented by the software raster backend; use `--mode OpenGL` or `--mode OpenCL` with vector outlines.
+- `--invert`, `--gammacorrect` and `--midpointadjustment` are applied by all backends, including Software. `--maximizeinsteadofaverage` is shared by all backends.
+- `--type MSDF`/`MSDFA` is supported by the Software outline and bitmap paths, as well as by OpenGL and OpenCL.
 
 ---
 
@@ -285,12 +297,12 @@ Flags (presence enables them; they take no value):
 
 ```bash
 FontPacker --nogui --infont /usr/share/fonts/truetype/arial.ttf \
-  --mode Software --type SDF --forceraster \
+  --mode Software --type SDF \
   --internalprocesssize 1024 --intendedsize 64 --padding 96 \
   --outbin arial_sdf.wodf
 ```
 
-`--forceraster` is required: the software backend has no outline renderer. `P = 96` is a multiple of `L / S = 16`, so the content edge lands on a stored texel boundary.
+`--forceraster` remains available for bitmap-only glyphs. `P = 96` is a multiple of `L / S = 16`, so the content edge lands on a stored texel boundary.
 
 ### B. Font to `.wodf`, GPU MSDF
 
@@ -312,7 +324,7 @@ FontPacker --nogui --insvg icon.svg \
   --outvectorbin icon_sdf.wodi
 ```
 
-SVG processing needs the OpenGL or OpenCL backend, because the software outline renderer is not implemented.
+SVG processing works with any backend; Software evaluates the decomposed outlines on the CPU.
 
 ### D. SVG stored as a font face
 
@@ -372,13 +384,13 @@ Important points for consumers:
 
 These are current properties of the code, documented so that users and automated tools do not make wrong assumptions.
 
-1. **Software mode cannot generate from outlines.** `SdfGenerationContextSoft::produceOutlineSdf()` is unimplemented (empty function body). Outline fonts and SVG therefore require `--mode OpenGL` or `--mode OpenCL`; TrueType/OpenType fonts can be used with Software only together with `--forceraster`.
-2. **Software mode emits single-channel SDFs only.** `SdfGenerationContextSoft::produceBitmapSdf()` always builds a `QImage::Format_Grayscale8`; `--type MSDF`/`MSDFA` needs the OpenGL or OpenCL backend.
+1. **Software mode is CPU-bound.** It now implements bitmap and outline SDF/MSDF/MSDFA, but large `L` values and large search radii are slower than the GPU backends; the loops are OpenMP-parallelised.
+2. **Software MSDF is approximate.** The bitmap MSDF path follows the three-direction GPU bitmap shader, and the outline MSDF path follows the GPU edge-colouring algorithm; exact GPU/software pixel equality is not guaranteed.
 3. **The OpenCL raster path supports SDF only.** Bitmap MSDF/MSDFA requires vector outlines; use `--mode OpenGL` or do not combine `--forceraster` with MSDF.
 4. **Each image is normalised independently.** A value of `0.6` does not mean the same pixel distance in two different glyphs; `distanceRangeX/Y` is only the nominal search radius. This is accepted by design.
 5. **`imageFormat` is limited to 7 characters.** Longer codec names are truncated and zero padded. This is accepted by design.
 6. **HIRES changes defaults silently.** With `DEFINES += HIRES`, `L` defaults to 4096 and `P` to 400 instead of 1024/100. This is accepted by design.
-7. **The Software backend ignores value transforms.** `--invert`, `--gammacorrect` and `--midpointadjustment` are implemented by the GL/OpenCL readback paths; the software distance pass normalises but does not transform the values.
+7. **Software and GPU normalization are independent.** All backends apply `--invert`, `--gammacorrect` and `--midpointadjustment`, but each image is normalized independently and FP differences remain possible.
 
 ---
 

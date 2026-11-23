@@ -2,6 +2,8 @@
 
 #include "GlHelpers.hpp"
 #include "SdfGenerationGL.hpp"
+#include "HlslToGlsl.hpp"
+#include "ShaderExamples.hpp"
 
 #include <QFile>
 #include <QImage>
@@ -127,4 +129,32 @@ TEST_CASE("OpenGL Manhattan mode affects raster SDF output", "[glsl][opengl]")
 	REQUIRE(euclidean.size() == QSize(32, 32));
 	REQUIRE(manhattan.size() == QSize(32, 32));
 	CHECK(euclidean != manhattan);
+}
+
+TEST_CASE("Built-in shader examples compile and link", "[glsl][examples]")
+{
+	std::unique_ptr<GlHelpers> gl;
+	try {
+		gl = std::make_unique<GlHelpers>();
+	} catch(const std::exception& error) {
+		SKIP("OpenGL 4.3 context is not available: " << error.what());
+	}
+	const QByteArray vertex = readShader(QStringLiteral(":/screen.vert.glsl"));
+	for(const ShaderExample& example : shaderExamples()) {
+		INFO(example.name);
+		QOpenGLShaderProgram program;
+		REQUIRE(program.create());
+		REQUIRE(program.addShaderFromSourceCode(QOpenGLShader::Vertex, vertex));
+		REQUIRE(program.addShaderFromSourceCode(QOpenGLShader::Fragment, QString::fromUtf8(example.glsl)));
+		REQUIRE(program.link());
+	}
+	for(const ShaderExample& example : shaderExamples()) {
+		INFO(example.name);
+		const std::string glsl = hlslFragmentToGlsl(example.hlsl);
+		QOpenGLShaderProgram program;
+		REQUIRE(program.create());
+		REQUIRE(program.addShaderFromSourceCode(QOpenGLShader::Vertex, vertex));
+		REQUIRE(program.addShaderFromSourceCode(QOpenGLShader::Fragment, QString::fromStdString(glsl)));
+		REQUIRE(program.link());
+	}
 }

@@ -1,9 +1,15 @@
 #include "MainWindow.hpp"
 #include "ui_MainWindow.h"
+#include <QComboBox>
 #include <QFileDialog>
 #include <QFile>
 #include <QMessageBox>
+#include <QPushButton>
+#include <QTextStream>
 #include <stdexcept>
+
+#include "HlslToGlsl.hpp"
+#include "ShaderExamples.hpp"
 
 namespace {
 
@@ -22,6 +28,8 @@ MainWindow::MainWindow(QWidget *parent)
 	connect(this,&MainWindow::fontHasBeenLoaded,this,&MainWindow::onFontHasBeenLoaded);
 	connect(this,&MainWindow::vecetorHasBeenLoaded,this,&MainWindow::onVectorHasBeenLoaded);
 	ui->setupUi(this);
+	setupShaderTools();
+	connect(ui->hlsl2GlslBtn, &QPushButton::clicked, this, &MainWindow::onHlsl2GlslBtnClicked);
 	highlighter = new argos::CQTOpenGLLuaSyntaxHighlighter(ui->glslEditor->document(), false);
 	emit changeState(MainWindowState::INITIAL);
 }
@@ -328,4 +336,103 @@ void MainWindow::on_horizontalSlider_4_valueChanged(int value)
 void MainWindow::repaintGl()
 {
 	this->ui->openGLWidget->update();
+}
+
+void MainWindow::setupShaderTools()
+{
+	shaderExampleComboBox = new QComboBox(ui->shaderTestTab);
+	shaderExampleComboBox->setObjectName(QStringLiteral("shaderExampleComboBox"));
+	shaderExampleComboBox->setGeometry(100, 0, 220, 23);
+	for(const ShaderExample& example : shaderExamples()) {
+		shaderExampleComboBox->addItem(QString::fromUtf8(example.name));
+	}
+	connect(shaderExampleComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
+			this, &MainWindow::onShaderExampleComboBoxCurrentIndexChanged);
+
+	shaderTutorialBtn = new QPushButton(tr("Tutorial"), ui->shaderTestTab);
+	shaderTutorialBtn->setGeometry(330, 0, 80, 23);
+	connect(shaderTutorialBtn, &QPushButton::clicked, this, &MainWindow::onShaderTutorialBtnClicked);
+
+	shaderLoadBtn = new QPushButton(tr("Load shader"), ui->shaderTestTab);
+	shaderLoadBtn->setGeometry(420, 0, 100, 23);
+	connect(shaderLoadBtn, &QPushButton::clicked, this, &MainWindow::onLoadShaderBtnClicked);
+
+	shaderSaveBtn = new QPushButton(tr("Save shader"), ui->shaderTestTab);
+	shaderSaveBtn->setGeometry(530, 0, 100, 23);
+	connect(shaderSaveBtn, &QPushButton::clicked, this, &MainWindow::onSaveShaderBtnClicked);
+
+	if(!shaderExamples().empty()) {
+		shaderExampleComboBox->setCurrentIndex(0);
+		ui->hlslEditor->setPlainText(QString::fromUtf8(shaderExamples().front().hlsl));
+	}
+}
+
+void MainWindow::onShaderExampleComboBoxCurrentIndexChanged(int index)
+{
+	if(index < 0 || static_cast<size_t>(index) >= shaderExamples().size()) return;
+	const ShaderExample& example = shaderExamples()[static_cast<size_t>(index)];
+	ui->glslEditor->setPlainText(QString::fromUtf8(example.glsl));
+	ui->hlslEditor->setPlainText(QString::fromUtf8(example.hlsl));
+	statusBar()->showMessage(tr("Loaded shader example: %1").arg(QString::fromUtf8(example.name)), 3000);
+}
+
+void MainWindow::onShaderTutorialBtnClicked()
+{
+	QMessageBox::information(this, tr("Shader tutorial"), QString::fromUtf8(shaderTutorialText()));
+}
+
+void MainWindow::onLoadShaderBtnClicked()
+{
+	const QString path = QFileDialog::getOpenFileName(this, tr("Load shader"), QString(),
+			tr("Shader files (*.glsl *.hlsl *.frag *.txt);;All files (*)"));
+	if(path.isEmpty()) return;
+	QFile file(path);
+	if(!file.open(QFile::ReadOnly)) {
+		QMessageBox::critical(this, tr("Error!"), tr("Failed to open the shader file for reading."));
+		return;
+	}
+	const QByteArray source = file.readAll();
+	if(path.endsWith(QStringLiteral(".hlsl"), Qt::CaseInsensitive)) {
+		ui->hlslEditor->setPlainText(QString::fromUtf8(source));
+		ui->enableHlslBtn->setChecked(true);
+	} else {
+		ui->glslEditor->setPlainText(QString::fromUtf8(source));
+	}
+	statusBar()->showMessage(tr("Loaded shader: %1").arg(path), 3000);
+}
+
+void MainWindow::onSaveShaderBtnClicked()
+{
+	const bool hlsl = ui->enableHlslBtn->isChecked();
+	const QString filter = hlsl ? tr("HLSL files (*.hlsl);;All files (*)")
+								: tr("GLSL files (*.glsl *.frag);;All files (*)");
+	const QString path = QFileDialog::getSaveFileName(this, tr("Save shader"), QString(), filter);
+	if(path.isEmpty()) return;
+	QFile file(path);
+	if(!file.open(QFile::WriteOnly)) {
+		QMessageBox::critical(this, tr("Error!"), tr("Failed to open the shader file for writing."));
+		return;
+	}
+	const QString source = hlsl ? ui->hlslEditor->toPlainText() : ui->glslEditor->toPlainText();
+	if(file.write(source.toUtf8()) < 0) {
+		QMessageBox::critical(this, tr("Error!"), tr("Failed to write the shader file."));
+		return;
+	}
+	statusBar()->showMessage(tr("Saved shader: %1").arg(path), 3000);
+}
+
+void MainWindow::onHlsl2GlslBtnClicked()
+{
+	const QString source = ui->hlslEditor->toPlainText();
+	if(source.trimmed().isEmpty()) {
+		QMessageBox::information(this, tr("HLSL"), tr("The HLSL editor is empty. Select an example or load an HLSL file first."));
+		return;
+	}
+	try {
+		const std::string glsl = hlslFragmentToGlsl(source.toStdString());
+		ui->glslEditor->setPlainText(QString::fromStdString(glsl));
+		statusBar()->showMessage(tr("HLSL transpiled to GLSL. Press Compile to preview it."), 5000);
+	} catch(const std::exception& error) {
+		QMessageBox::critical(this, tr("HLSL transpilation failed"), QString::fromUtf8(error.what()));
+	}
 }
