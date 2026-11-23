@@ -126,6 +126,24 @@ struct StoredVectorImage
 	 * @return Image format name accepted by QImageWriter, without the padding.
 	 */
 	QByteArray imageFormatBytes() const;
+
+	/**
+	 * @brief Re-encode, optionally rescale and optionally rebuild the mip chain.
+	 *
+	 * This is the supported operation for inputs loaded with `--invectorbin` /
+	 * `--invectorcbor`; it never regenerates distance values. Level 0 is decoded,
+	 * optionally rescaled to `newActualSize`, and re-encoded with
+	 * `newImageFormat`. If the size changes, all following levels are regenerated
+	 * by successive half-size smooth resampling; if `rebuildMipmaps` is true the
+	 * chain is regenerated down to 1x1 even when the size is unchanged.
+	 * `actualSize` and the nominal distance ranges are updated; `processingSize`,
+	 * `padding` and the logical rectangle are left untouched.
+	 * @param newImageFormat Codec name to write; empty keeps the current codec.
+	 * @param newActualSize New level-0 size `S`; `0` keeps the current size.
+	 * @param rebuildMipmaps Regenerate the halving chain from level 0.
+	 * @throws std::runtime_error if there is no level 0, it cannot be decoded, or encoding fails.
+	 */
+	void repack(const QByteArray& newImageFormat, uint32_t newActualSize = 0, bool rebuildMipmaps = false);
 };
 
 #endif // STOREDVECTORIMAGE_HPP

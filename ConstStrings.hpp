@@ -8,9 +8,6 @@
  *
  * @note The CBOR key for `PreprocessedFontFace::bitmap_size` is the legacy
  *       string `"dimensions"`, not `"bitmap_size"`.
- * @note `CHAR_MAX_KEY` currently has the same value as `CHAR_MIN_KEY`
- *       (`"mincharcode"`). This is a known bug: supplying the option sets both
- *       range bounds to the same value, so the half-open loop generates nothing.
  */
 
 #ifndef CONSTSTRINGS_HPP
@@ -51,8 +48,8 @@ extern const QString INTENDED_SIZE_KEY;              ///< `"intendedsize"` - `S`
 extern const QString PADDING_KEY;                    ///< `"padding"` - `P`, the border inside `L`.
 extern const QString SAMPLES_TO_CHECK_X_KEY;         ///< `"samplestocheckx"` - SDF search radius in X; 0 uses the padding.
 extern const QString SAMPLES_TO_CHECK_Y_KEY;         ///< `"samplestochecky"` - SDF search radius in Y; 0 uses the padding.
-extern const QString CHAR_MIN_KEY;                   ///< `"mincharcode"` - first processed code point.
-extern const QString CHAR_MAX_KEY;                   ///< `"mincharcode"` (sic) - one past the last code point; see the file-level note.
+extern const QString CHAR_MIN_KEY;                   ///< `"mincharcode"` - first processed code point (inclusive).
+extern const QString CHAR_MAX_KEY;                   ///< `"maxcharcode"` - one past the last processed code point (exclusive).
 extern const QString IN_FONT_KEY;                    ///< `"infont"` - input font path.
 extern const QString IN_BIN_KEY;                     ///< `"inbin"` - input `.wodf` path.
 extern const QString IN_CBOR_KEY;                    ///< `"incbor"` - input CBOR font path.
@@ -90,6 +87,10 @@ extern const QString DESCENDER_KEY;                  ///< `"descender"` - face d
 extern const QString FACE_HEIGHT_KEY;                ///< `"faceHeight"` - baseline-to-baseline distance in pixels.
 extern const QString MAX_ADVANCE_KEY;                ///< `"maxAdvance"` - maximum advance in pixels.
 extern const QString UNITS_PER_EM_KEY;               ///< `"unitsPerEm"` - original design units per EM.
+extern const QString DISTANCE_RANGE_X_KEY;           ///< `"distanceRangeX"` - nominal encoded SDF radius in level-0 texels (X).
+extern const QString DISTANCE_RANGE_Y_KEY;           ///< `"distanceRangeY"` - nominal encoded SDF radius in level-0 texels (Y).
+extern const QString ENCODING_FLAGS_KEY;             ///< `"encodingFlags"` - bitmask of `StoredVectorImage::EncodingFlag` values baked into the pixels.
+extern const QString CBOR_MIDPOINT_ADJUSTMENT_KEY;   ///< `"midpointAdjustment"` - baked midpoint divisor (CBOR spelling; the CLI spelling is lower-case).
 extern const QString KERNING_KEY;                    ///< `"kerning"` - nested kerning map.
 extern const QString IMAGE_FORMAT_KEY;               ///< `"format"` - encoded image codec name.
 /** @} */

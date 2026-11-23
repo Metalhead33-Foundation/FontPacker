@@ -1,6 +1,8 @@
 #include "StoredVectorImage.hpp"
 #include "ConstStrings.hpp"
 #include <QCborArray>
+#include <QImage>
+#include <QBuffer>
 #include <algorithm>
 #include <stdexcept>
 
@@ -175,4 +177,80 @@ QByteArray StoredVectorImage::imageFormatBytes() const
 {
 	const auto terminator = std::find(imageFormat.begin(), imageFormat.end(), '\0');
 	return QByteArray(imageFormat.data(), std::distance(imageFormat.begin(), terminator));
+}
+
+void StoredVectorImage::repack(const QByteArray& newImageFormat, uint32_t newActualSize, bool rebuildMipmaps)
+{
+	QByteArray codec = newImageFormat.trimmed().toUpper();
+	if(codec.isEmpty()) codec = imageFormatBytes();
+	if(codec.isEmpty()) codec = QByteArrayLiteral("PNG");
+	if(codec.size() > 7) codec = codec.left(7);
+	if(mipmaps.isEmpty()) {
+		throw std::runtime_error("Cannot repack a vector image without a level-0 image.");
+	}
+
+	auto encode = [&codec](const QImage& img) {
+		if(img.isNull() || img.width() <= 0 || img.height() <= 0) {
+			throw std::runtime_error("Cannot encode an empty vector image level.");
+		}
+		QByteArray bytes;
+		QBuffer buff(&bytes);
+		buff.open(QIODevice::WriteOnly);
+		if(!img.save(&buff, codec.constData(), -1)) {
+			throw std::runtime_error(QStringLiteral("Failed to encode a vector image level as %1.")
+									 .arg(QString::fromLatin1(codec)).toStdString());
+		}
+		buff.close();
+		return bytes;
+	};
+
+	QImage base = QImage::fromData(mipmaps.first());
+	if(base.isNull()) {
+		throw std::runtime_error("Failed to decode the level-0 vector image.");
+	}
+	if(base.width() <= 0 || base.height() <= 0) {
+		throw std::runtime_error("The level-0 vector image has an invalid size.");
+	}
+
+	const uint32_t oldActualSize = actualSize ? actualSize : static_cast<uint32_t>(base.width());
+	const uint32_t targetActualSize = newActualSize ? newActualSize : oldActualSize;
+	if(targetActualSize == 0) {
+		throw std::runtime_error("Cannot repack a vector image with an unknown size.");
+	}
+
+	QList<QByteArray> newMipmaps;
+	if(newActualSize || rebuildMipmaps) {
+		if(static_cast<uint32_t>(base.width()) != targetActualSize || static_cast<uint32_t>(base.height()) != targetActualSize) {
+			base = base.scaled(static_cast<int>(targetActualSize), static_cast<int>(targetActualSize),
+							   Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+		}
+		newMipmaps.push_back(encode(base));
+		const bool wantsChain = rebuildMipmaps || mipmaps.size() > 1;
+		if(wantsChain) {
+			QImage level = base;
+			while(level.width() > 1 || level.height() > 1) {
+				const int nextWidth = std::max(1, level.width() / 2);
+				const int nextHeight = std::max(1, level.height() / 2);
+				level = level.scaled(nextWidth, nextHeight, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+				newMipmaps.push_back(encode(level));
+			}
+		}
+	} else {
+		for(const QByteArray& mipmap : mipmaps) {
+			const QImage img = QImage::fromData(mipmap);
+			if(img.isNull()) {
+				throw std::runtime_error("Failed to decode a vector image mip level.");
+			}
+			newMipmaps.push_back(encode(img));
+		}
+	}
+
+	mipmaps = newMipmaps;
+	setImageFormat(codec);
+	if(oldActualSize && targetActualSize != oldActualSize) {
+		const float ratio = static_cast<float>(targetActualSize) / static_cast<float>(oldActualSize);
+		distanceRangeX *= ratio;
+		distanceRangeY *= ratio;
+	}
+	actualSize = targetActualSize;
 }

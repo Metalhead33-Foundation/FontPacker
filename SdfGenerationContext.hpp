@@ -9,15 +9,14 @@
  * - processFont() measures the face at FreeType em = `internalProcessSize - padding`,
  *   fills PreprocessedFontFace::ascender/descender/faceHeight/maxAdvance and copies
  *   the per-glyph metrics into StoredCharacter before any stretching happens.
- *   For outline glyphs, the later fit step overwrites four of the float metric
- *   fields with the outline bounds; see StoredCharacter's warning.
+ *   The fit step uses those metrics (as double copies) and does not modify them.
  * - processOutlineGlyph() / processBitmapGlyph() fill one StoredCharacter and then
  *   call processOutlineGlyphEnd(), which stretches the glyph into the
  *   `(L - 2P)` content box, evaluates the SDF, downsamples to `intendedSize` and
  *   encodes the image with the requested codec.
  * - The three bitmap_logical_size / bitmap_size / bitmap_padding fields are
- *   assigned directly from internalProcessSize / intendedSize / padding; they are
- *   not derived from the image afterwards.
+ *   assigned from internalProcessSize / intendedSize / padding; `bitmap_size`
+ *   is resolved to `internalProcessSize` when no downsampling is requested.
  * See BINARY_FORMAT.md for the byte layout and the geometry formulas.
  */
 
@@ -134,9 +133,10 @@ public:
 	 * bitmap path.
 	 *
 	 * Writes `bitmap_logical_size = internalProcessSize`,
-	 * `bitmap_size = intendedSize` (which may be 0, meaning "same as logical"),
+	 * `bitmap_size = intendedSize` (or `internalProcessSize` when it is 0),
 	 * `bitmap_padding = padding`, plus `type`, `distType`, `imageFormat`,
-	 * `hasVert`, `unitsPerEm` and the family name.
+	 * `hasVert`, `unitsPerEm`, the family name, the nominal distance ranges,
+	 * the encoding flags and the midpoint adjustment.
 	 * @param output Preprocessed font face to populate.
 	 * @param args Generation arguments.
 	 * @throws std::runtime_error if the font cannot be opened or configured, or if glyph generation fails.
@@ -148,13 +148,16 @@ public:
 	 *
 	 * The SVG viewport becomes the face metrics: `ascender`, `faceHeight` and
 	 * `unitsPerEm` are set to the viewport height, `maxAdvance` to the viewport
-	 * width and `descender` to 0, and each glyph's `width`/`height` are the
-	 * viewport size. `hasVert` is always false. Use this overload with `--outbin`,
-	 * `--outcbor` or `--outfont`.
+	 * width and `descender` to 0. Each glyph's `width`/`height`, float metric box
+	 * and `horiAdvance` are the viewport size; `advance_x`/`advance_y` hold that
+	 * size in 26.6 fixed point and the bearings are 0. `hasVert` is always false.
+	 * The nominal distance ranges, encoding flags and midpoint adjustment are
+	 * written to the header. A zero-sized viewport is rejected. Use this overload
+	 * with `--outbin`, `--outcbor` or `--outfont`.
 	 * @param output Preprocessed font face to populate.
 	 * @param buff SVG file data.
 	 * @param args Generation arguments.
-	 * @throws std::runtime_error if the SVG cannot be parsed or contains no paths.
+	 * @throws std::runtime_error if the SVG cannot be parsed, has a zero-sized viewport, or contains no paths.
 	 */
 	void processSvg(PreprocessedFontFace& output, const QByteArray& buff, const SDFGenerationArguments& args);
 

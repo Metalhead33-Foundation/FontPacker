@@ -1,60 +1,50 @@
-# The header reference, rendered and published.
+# Build and publish the FontPacker API reference.
 #
-# `Doxyfile` is the one place that renders the headers and the Markdown notes;
-# `docs/DOCUMENTATION.md` is the policy behind it (Qt-style comments, the note
-# tree, the checks). The render is cheap: it needs no compiler and no Qt, only
-# Doxygen and the `extern/doxygen-awesome-css` submodule used for the theme. It
-# renders into `build/doxygen/html` (the shadow build tree, as `AGENTS.md`
-# requires) and publishes that folder:
+# `Doxyfile` is the single source of truth for the render: it consumes the two
+# Markdown documents (README.md as the main page, BINARY_FORMAT.md as the format
+# specification) and every *.hpp in the repository. The theme comes from the
+# `doxygen-awesome-css` git submodule, so the checkout must be recursive.
 #
-#   * every run on `master` uploads the rendered site as the `doxygen-html`
-#     workflow artifact, downloadable from the run page;
-#   * the same site is deployed to GitHub Pages, i.e. the repository's Pages
-#     URL.
+# The job produces `build/doxygen/html` (the shadow build tree; `build*/` is
+# git-ignored) and then:
+#   * uploads it as the `doxygen-html` artifact on every run, so the site can be
+#     inspected without a local Doxygen installation, and
+#   * deploys it to GitHub Pages when the push targets `master`.
 #
-# This is the repository's only Pages publisher, and it must stay that way. A
-# Pages deployment *replaces* the published site instead of merging into it, so
-# two deployers of the same `github-pages` environment do not combine their
-# content: the one that finishes last wins and the other is discarded. That is
-# how a front door can come to answer "File not found" when a second, unrelated
-# deployer publishes a different root. Adding a page here is the way to extend
-# the site; a second deployer is not.
+# This is the repository's only Pages publisher. A Pages deployment replaces the
+# whole published site, so a second deployer would overwrite this one instead of
+# adding to it. Add pages to this render rather than adding another workflow.
 #
-# One-time setup, in the repository settings: Settings -> Pages -> Build and
-# deployment -> Source must be "GitHub Actions". Without it `deploy-pages` fails
-# with "Get Pages site failed"; the artifact is still uploaded, and the render
-# job still passes. The deploy job's first step reports that misconfiguration
-# earlier and with a clearer message.
+# One-time repository setup: Settings -> Pages -> Build and deployment ->
+# Source = "GitHub Actions". Without it the deploy job fails with
+# "Get Pages site failed"; the artifact is still uploaded and the render job
+# still passes.
 #
-# Deliberately not run here: the qmake build and `Test/MyGameApp`. They need the
-# full qmake toolchain and every external codec library, and belong to the test
-# suite's job, not to the documentation renderer.
+# The documentation render intentionally does not compile the application: it
+# needs no Qt, FreeType, HarfBuzz or libsvgtiny, only Doxygen and the theme.
+# Building the project belongs to a separate build/test workflow, not here.
 
 name: Doxygen
 
 on:
   push:
     branches: [master]
-  # Lets the site be published, or re-published after enabling Pages, without
-  # an empty commit. A dispatch from another branch builds the artifact only;
-  # the deploy job below is restricted to `master`.
+  # A manual dispatch from any branch renders and uploads the artifact; the
+  # deploy job below is restricted to `master`.
   workflow_dispatch:
 
-# Nothing in the render job needs to write to the repository. `pages: write`
-# and `id-token: write` are granted to the deploy job alone.
 permissions:
   contents: read
 
-# A published site is replaced, never merged: let one deployment finish before
-# the next starts, and never cancel one half-way through.
+# Pages deployments are serialised, never cancelled half-way through.
 concurrency:
   group: pages
   cancel-in-progress: false
 
 env:
-  # `OUTPUT_DIRECTORY = build/doxygen` in `Doxyfile`, plus its `HTML_OUTPUT`.
+  # Keep in sync with OUTPUT_DIRECTORY + HTML_OUTPUT in Doxyfile.
   SITE_DIR: build/doxygen/html
-  # The renderer's stderr, kept in the shadow build tree with the site itself.
+  # Doxygen's stderr, kept next to the site in the shadow build tree.
   LOG: build/doxygen.log
 
 jobs:
@@ -62,8 +52,8 @@ jobs:
     name: Render the reference
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the tree
-        uses: actions/checkout@v7
+      - name: Check out the tree and the theme
+        uses: actions/checkout@v4
         with:
           submodules: true
 
@@ -75,12 +65,15 @@ jobs:
 
       - name: Render the site
         run: |
-          # Doxygen creates `build/doxygen/html` itself, but not its parents,
-          # and a fresh checkout has no `build/`: it is git-ignored.
+          # A broken Doxygen run must fail the step even though the output is
+          # piped through tee.
+          set -o pipefail
+          # Doxygen creates build/doxygen/html itself but not its parents, and
+          # a fresh checkout has no build/ directory (it is git-ignored).
           mkdir -p build
           doxygen Doxyfile 2>&1 | tee "$LOG"
-          # The site's front door. A missing `index.html` means the artifact is
-          # not worth uploading, and Pages would serve a 404.
+          # Guard against an empty or misconfigured render: without index.html
+          # the artifact is useless and Pages would serve a 404.
           test -f "$SITE_DIR/index.html"
 
       - name: Surface Doxygen warnings
@@ -90,15 +83,16 @@ jobs:
             exit 0
           fi
           if [ -s "$LOG" ]; then
-            # `WARN_AS_ERROR = NO` in `Doxyfile` is deliberate: the strict pass
-            # of docs/DOCUMENTATION.md §6 is a work list, not a gate, and the
-            # committed config is what decides whether a run fails. So a
-            # warning becomes an annotation on the run, not a red build.
+            # WARN_AS_ERROR = NO in Doxyfile is deliberate: the config is a work
+            # list, so a warning becomes an annotation instead of a red build.
+            # The committed Doxyfile enables WARN_IF_UNDOCUMENTED and
+            # WARN_NO_PARAMDOC; a clean run therefore means every header member
+            # has a doc block.
             sed "s|$GITHUB_WORKSPACE/||g" "$LOG" | while IFS= read -r line; do
               echo "::warning title=Doxygen::$line"
             done
           else
-            echo "The render was warning-free (docs/DOCUMENTATION.md §6)."
+            echo "The render was warning-free."
           fi
 
       - name: Summarise the render
@@ -116,7 +110,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload the rendered site as an artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: doxygen-html
           path: ${{ env.SITE_DIR }}
@@ -124,20 +118,18 @@ jobs:
           retention-days: 30
 
       - name: Package the site for GitHub Pages
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-pages-artifact@v3
         with:
           path: ${{ env.SITE_DIR }}
-          # The Pages artifact is consumed by the deploy job of this run and is
-          # of no use afterwards; the `doxygen-html` artifact above is the one
-          # to keep and download.
+          # Consumed by the deploy job of this run only; the artifact above is
+          # the one to keep and download.
           retention-days: 1
 
   deploy:
     name: Deploy to GitHub Pages
     needs: render
-    # A manual dispatch from a side branch may build the artifact, but only
-    # `master` replaces the published site — Pages validates the ref against
-    # the `github-pages` environment's protection rules.
+    # Only master replaces the published site; Pages validates the ref against
+    # the github-pages environment's protection rules.
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     permissions:
@@ -147,13 +139,11 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      # Reads the Pages site from the API (`base_url`, `origin`, build type) and
-      # fails here — naming the setting — if the source is not "GitHub Actions".
-      # Otherwise `deploy-pages` reports the same misconfiguration as a generic
-      # API error, after the artifact has been uploaded and a deployment wasted.
+      # Reads the Pages configuration and fails with a clear message if the
+      # source is not "GitHub Actions", before the deployment is attempted.
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
       - name: Deploy the site
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@v4

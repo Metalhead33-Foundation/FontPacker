@@ -63,7 +63,7 @@ void PreprocessedFontFace::toCbor(QCborMap& cbor) const
 	cbor.insert(FONT_NAME_KEY,fontFamilyName);
 	cbor.insert(TYPE_KEY, static_cast<unsigned>(type));
 	cbor.insert(DIST_KEY, static_cast<unsigned>(distType));
-	cbor.insert(BITMAP_SIZE_KEY, bitmap_size);
+	cbor.insert(BITMAP_SIZE_KEY, bitmap_size ? bitmap_size : bitmap_logical_size);
 	cbor.insert(BITMAP_LOGICAL_SIZE_KEY, bitmap_logical_size);
 	cbor.insert(PADDING_KEY, bitmap_padding);
 	cbor.insert(HAS_VERT_KEY, hasVert);
@@ -73,6 +73,12 @@ void PreprocessedFontFace::toCbor(QCborMap& cbor) const
 	cbor.insert(FACE_HEIGHT_KEY, faceHeight);
 	cbor.insert(MAX_ADVANCE_KEY, maxAdvance);
 	cbor.insert(UNITS_PER_EM_KEY, unitsPerEm);
+	if(version >= 2) {
+		cbor.insert(DISTANCE_RANGE_X_KEY, distanceRangeX);
+		cbor.insert(DISTANCE_RANGE_Y_KEY, distanceRangeY);
+		cbor.insert(ENCODING_FLAGS_KEY, encodingFlags);
+		cbor.insert(CBOR_MIDPOINT_ADJUSTMENT_KEY, midpointAdjustment);
+	}
 	QCborMap tmpMap;
 	for(auto it = std::begin(storedCharacters); it != std::end(storedCharacters); ++it) {
 		tmpMap.insert(it.key(),it.value().toCbor());
@@ -102,7 +108,12 @@ QCborMap PreprocessedFontFace::toCbor() const
 void PreprocessedFontFace::fromCbor(const QCborMap& cbor)
 {
 	validatePreprocessedFontFaceCborType(cbor);
-	this->version = static_cast<uint32_t>(cbor[VERSION_KEY].toInteger(CURRENT_VERSION));
+	if(cbor.contains(VERSION_KEY)) {
+		this->version = static_cast<uint32_t>(cbor[VERSION_KEY].toInteger(1));
+	} else {
+		// Old CBOR files had no version; the distance-range key identifies v2.
+		this->version = cbor.contains(DISTANCE_RANGE_X_KEY) ? 2u : 1u;
+	}
 	validatePreprocessedFontFaceVersion(version);
 	this->fontFamilyName = cbor[FONT_NAME_KEY].toString();
 	this->type = static_cast<SDFType>(cbor[TYPE_KEY].toInteger());
@@ -117,6 +128,10 @@ void PreprocessedFontFace::fromCbor(const QCborMap& cbor)
 	this->faceHeight = cbor[FACE_HEIGHT_KEY].toDouble();
 	this->maxAdvance = cbor[MAX_ADVANCE_KEY].toDouble();
 	this->unitsPerEm = cbor[UNITS_PER_EM_KEY].toInteger();
+	this->distanceRangeX = static_cast<float>(cbor[DISTANCE_RANGE_X_KEY].toDouble(0.0));
+	this->distanceRangeY = static_cast<float>(cbor[DISTANCE_RANGE_Y_KEY].toDouble(0.0));
+	this->encodingFlags = static_cast<uint32_t>(cbor[ENCODING_FLAGS_KEY].toInteger(0));
+	this->midpointAdjustment = static_cast<float>(cbor[CBOR_MIDPOINT_ADJUSTMENT_KEY].toDouble(1.0));
 	QCborMap tmpMap = cbor[GLYPHS_KEY].toMap();
 	for(auto it = std::begin(tmpMap); it != std::end(tmpMap); ++it) {
 		unsigned charCode = it.key().toInteger();
@@ -135,6 +150,18 @@ void PreprocessedFontFace::fromCbor(const QCborMap& cbor)
 		}
 		kerning.insert(it.key().toInteger(),perCharKern);
 	}
+	if(!cbor.contains(DISTANCE_RANGE_X_KEY) && bitmap_logical_size) {
+		// Old CBOR files may omit both the fields and an explicit version.
+		const float storedSize = static_cast<float>(bitmap_size ? bitmap_size : bitmap_logical_size);
+		distanceRangeX = static_cast<float>(bitmap_padding) * storedSize / static_cast<float>(bitmap_logical_size);
+		distanceRangeY = distanceRangeX;
+	}
+	if(version < 2 && bitmap_logical_size) {
+		// Version 1 did not store ranges; reconstruct the nominal padding-based value.
+		const float storedSize = static_cast<float>(bitmap_size ? bitmap_size : bitmap_logical_size);
+		distanceRangeX = static_cast<float>(bitmap_padding) * storedSize / static_cast<float>(bitmap_logical_size);
+		distanceRangeY = distanceRangeX;
+	}
 }
 
 void PreprocessedFontFace::toData(QDataStream& dataStream) const
@@ -142,9 +169,13 @@ void PreprocessedFontFace::toData(QDataStream& dataStream) const
 	dataStream.writeRawData(BINARY_MAGIC.data(), BINARY_MAGIC.size());
 	dataStream << version;
 	saveToDatastreamAsUtf8(dataStream, this->fontFamilyName);
-	dataStream << static_cast<uint8_t>(type) << static_cast<uint8_t>(distType) << bitmap_size << bitmap_logical_size << bitmap_padding << hasVert;
+	dataStream << static_cast<uint8_t>(type) << static_cast<uint8_t>(distType) << (bitmap_size ? bitmap_size : bitmap_logical_size) << bitmap_logical_size << bitmap_padding << hasVert;
 	dataStream.writeRawData(imageFormat.data(), imageFormat.size());
-	dataStream << ascender << descender << faceHeight << maxAdvance << unitsPerEm << static_cast<uint32_t>(storedCharacters.size());
+	dataStream << ascender << descender << faceHeight << maxAdvance << unitsPerEm;
+	if(version >= 2) {
+		dataStream << distanceRangeX << distanceRangeY << encodingFlags << midpointAdjustment;
+	}
+	dataStream << static_cast<uint32_t>(storedCharacters.size());
 	// Write table of contents
 	QMap<uint32_t,uint32_t> offsets;
 	auto currOffset = dataStream.device()->pos();
@@ -176,7 +207,11 @@ void PreprocessedFontFace::fromData(QDataStream& dataStream)
 	dataStream >> tmpType >> tmpDist >> bitmap_size >> bitmap_logical_size >> bitmap_padding >> hasVert;
 	dataStream.readRawData(imageFormat.data(), imageFormat.size());
 	imageFormat.back() = '\0';
-	dataStream >> ascender >> descender >> faceHeight >> maxAdvance >> unitsPerEm >> charCount;
+	dataStream >> ascender >> descender >> faceHeight >> maxAdvance >> unitsPerEm;
+	if(version >= 2) {
+		dataStream >> distanceRangeX >> distanceRangeY >> encodingFlags >> midpointAdjustment;
+	}
+	dataStream >> charCount;
 	this->type = static_cast<SDFType>(tmpType);
 	this->distType = static_cast<DistanceType>(tmpDist);
 	QMap<uint32_t,uint32_t> offsets;
@@ -191,6 +226,12 @@ void PreprocessedFontFace::fromData(QDataStream& dataStream)
 		StoredCharacter tmpChar;
 		tmpChar.fromData(dataStream);
 		storedCharacters.insert(it.key(),tmpChar);
+	}
+	if(version < 2 && bitmap_logical_size) {
+		// Version 1 did not store ranges; reconstruct the nominal padding-based value.
+		const float storedSize = static_cast<float>(bitmap_size ? bitmap_size : bitmap_logical_size);
+		distanceRangeX = static_cast<float>(bitmap_padding) * storedSize / static_cast<float>(bitmap_logical_size);
+		distanceRangeY = distanceRangeX;
 	}
 }
 
@@ -207,6 +248,49 @@ QByteArray PreprocessedFontFace::imageFormatBytes() const
 {
 	const auto terminator = std::find(imageFormat.begin(), imageFormat.end(), '\0');
 	return QByteArray(imageFormat.data(), std::distance(imageFormat.begin(), terminator));
+}
+
+void PreprocessedFontFace::repack(const QByteArray& newImageFormat, uint32_t newIntendedSize)
+{
+	QByteArray codec = newImageFormat.trimmed().toUpper();
+	if(codec.isEmpty()) codec = imageFormatBytes();
+	if(codec.isEmpty()) codec = QByteArrayLiteral("PNG");
+	if(codec.size() > 7) codec = codec.left(7);
+
+	const uint32_t oldStoredSize = bitmap_size ? bitmap_size : bitmap_logical_size;
+	const uint32_t targetStoredSize = newIntendedSize ? newIntendedSize : oldStoredSize;
+	if(targetStoredSize == 0) {
+		throw std::runtime_error("Cannot repack a font face with an unknown stored size.");
+	}
+
+	for(auto it = std::begin(storedCharacters); it != std::end(storedCharacters); ++it) {
+		if(it.value().sdf.isEmpty()) continue;
+		QImage img = QImage::fromData(it.value().sdf);
+		if(img.isNull() || img.width() != img.height()) {
+			throw std::runtime_error(QStringLiteral("Failed to decode the SDF image of code point %1.").arg(it.key()).toStdString());
+		}
+		if(newIntendedSize && img.width() != static_cast<int>(newIntendedSize)) {
+			img = img.scaled(static_cast<int>(newIntendedSize), static_cast<int>(newIntendedSize),
+							 Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+		}
+		QByteArray bytes;
+		QBuffer buff(&bytes);
+		buff.open(QIODevice::WriteOnly);
+		if(!img.save(&buff, codec.constData(), -1)) {
+			throw std::runtime_error(QStringLiteral("Failed to encode the SDF image of code point %1 as %2.")
+									 .arg(it.key()).arg(QString::fromLatin1(codec)).toStdString());
+		}
+		buff.close();
+		it.value().sdf = bytes;
+	}
+
+	setImageFormat(codec);
+	if(newIntendedSize && oldStoredSize && newIntendedSize != oldStoredSize) {
+		const float ratio = static_cast<float>(newIntendedSize) / static_cast<float>(oldStoredSize);
+		distanceRangeX *= ratio;
+		distanceRangeY *= ratio;
+	}
+	bitmap_size = targetStoredSize;
 }
 
 void PreprocessedFontFace::outToFolder(const QString& pattern) const

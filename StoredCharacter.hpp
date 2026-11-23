@@ -10,19 +10,16 @@
  * @note For font input, all float metrics are **pixels**, measured in the
  *       FreeType pixel space where 1 em = `bitmap_logical_size -
  *       bitmap_padding`. They are not in font design units and not in stored
- *       texels. The single exception is advance_x / advance_y, which are raw
- *       26.6 fixed-point (divide by 64). For SVG input, every numeric field is
- *       in **SVG user units** and advance_x / advance_y are plain pixels.
- * @warning For glyphs produced from outlines or SVG, the fit step overwrites
- *       metricWidth, metricHeight, horiBearingX and horiBearingY with the
- *       outline bounds (minX, maxX, minY, maxY respectively). Use width,
- *       height, bearing_x, bearing_y and horiAdvance for layout. Only raster
- *       glyphs (--forceraster or bitmap fonts) keep the FreeType metric values
- *       in those four fields. See BINARY_FORMAT.md, "Metric caveat".
+ *       texels. `advance_x` / `advance_y` are raw 26.6 fixed-point (divide by
+ *       64). For SVG input (version 2), every numeric field is in **SVG user
+ *       units** and advance_x / advance_y are 26.6 fixed-point user units.
+ * @note The fit uses the metric box. metricWidth, metricHeight, horiBearingX
+ *       and horiBearingY describe the FreeType metric box of a font glyph or
+ *       the viewport of an SVG glyph; the fit no longer overwrites them.
  * @note The image is a full square tile (`bitmap_size` x `bitmap_size`, or
- *       `bitmap_logical_size` square when that field is 0). There is no atlas
- *       and no sub-rectangle. Padding is part of the logical size; see
- *       BINARY_FORMAT.md, section "Raster geometry".
+ *       `bitmap_logical_size` square for a legacy version 1 file with 0).
+ *       There is no atlas and no sub-rectangle. Padding is part of the logical
+ *       size; see BINARY_FORMAT.md, section "Raster geometry".
  * @see PreprocessedFontFace, BINARY_FORMAT.md
  */
 
@@ -65,10 +62,10 @@ uint32_t advance_x;             ///< Horizontal advance in **26.6 fixed-point pi
 uint32_t advance_y;             ///< Vertical advance in **26.6 fixed-point pixels** (divide by 64).
 
 // Glyph metrics (floating-point, more precise than integer values)
-float metricWidth;             ///< Raster: metric-box width. Vector: clobbered with the outline's minimum X (see the struct warning).
-float metricHeight;            ///< Raster: metric-box height. Vector: clobbered with the outline's maximum X (not a height).
-float horiBearingX;            ///< Raster: sub-pixel bearing X. Vector: clobbered with the outline's minimum Y.
-float horiBearingY;            ///< Raster: sub-pixel bearing Y. Vector: clobbered with the outline's maximum Y.
+float metricWidth;             ///< Metric-box width used by the fit; FreeType metrics or the SVG viewport width.
+float metricHeight;            ///< Metric-box height used by the fit; FreeType metrics or the SVG viewport height.
+float horiBearingX;            ///< Sub-pixel left bearing of the metric box (0 for SVG).
+float horiBearingY;            ///< Sub-pixel top bearing of the metric box (viewport height for SVG).
 float horiAdvance;             ///< Horizontal advance in pixels (advance_x / 64).
 float vertBearingX;            ///< Vertical-layout bearing X in pixels; meaningful only when the face has vertical metrics.
 float vertBearingY;            ///< Vertical-layout bearing Y in pixels; meaningful only when the face has vertical metrics.

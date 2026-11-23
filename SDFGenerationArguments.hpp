@@ -62,7 +62,7 @@ enum SvgTreatment {
  * Geometry invariants:
  * - `internalProcessSize` is `L` and `intendedSize` is `S`; both describe square
  *   images. `intendedSize == 0` disables downsampling, so the stored images are
- *   `L x L` and `.wodf` records `bitmap_size = 0`.
+ *   `L x L`; the writer records `bitmap_size = L` rather than 0.
  * - `padding` is `P`, expressed in pixels of the `L` grid and included in `L`.
  *   The drawable content box is `L - 2P`; `2 * padding < internalProcessSize`
  *   must hold, and `samples_to_check_*` (when non-zero) replaces `padding` as
@@ -88,7 +88,7 @@ struct SDFGenerationArguments {
 	bool msdfgenColouring;                        ///< Use the msdfgen-style edge colour assignment for MSDF.
 	bool invert;                                  ///< Invert the final distance values (`1 - x`).
 	QByteArray imageFormat;                       ///< Encoded image codec passed to QImage::save (upper-cased); stored in the container's 8-byte field.
-bool forceRaster;                             ///< Rasterise glyphs instead of using the outline path; required for Software mode.
+	bool forceRaster;                             ///< Rasterise glyphs instead of using the outline path; required for Software mode.
 bool gammaCorrect;                            ///< Apply the cubic gamma adjustment around 0.5.
 bool maximizeInsteadOfAverage;                ///< Use max instead of average when downsampling.
 std::optional<float> midpointAdjustment;      ///< Optional divisor baked into the distance values; must be positive when present.

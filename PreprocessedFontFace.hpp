@@ -110,16 +110,33 @@ QDataStream &operator>>(QDataStream &stream, KerningMap &processedFontFace);
  *
  * `storedCharacters` is keyed by Unicode code point. Every value's `sdf` member
  * is one independently encoded square tile; there is no atlas in this object.
+ *
+ * @section version2 Format version 2
+ * Version 2 adds the nominal encoded distance ranges (`distanceRangeX/Y`),
+ * the `encodingFlags` bitmask and `midpointAdjustment` to the header, and
+ * defines `bitmap_size` to always contain the actual stored square size. New
+ * generation writes version 2; the reader accepts version 1 (where the four
+ * fields are absent, the metric fields follow the old bounds-based fit and SVG
+ * advances are plain pixels) and version 2. A loaded version 1 file stays
+ * version 1 when rewritten, because its glyphs cannot be converted to the
+ * version 2 layout semantics without regeneration.
+ *
+ * @note `distanceRangeX/Y` are the same **nominal** values stored by
+ *       StoredVectorImage: `(samples/2 or padding) * S / L`. Both backends
+ *       normalise each image independently (see BINARY_FORMAT.md), so the
+ *       actual value range of a glyph can be smaller than this nominal radius.
+ *       For a version 1 file the fields are reconstructed in memory from `P`,
+ *       `S` and `L` but are not written back.
  */
 struct PreprocessedFontFace {
 	static constexpr std::array<char,4> BINARY_MAGIC{{'W','O','D','F'}}; ///< Magic bytes at the start of every `.wodf` file.
-	static constexpr uint32_t CURRENT_VERSION = 1; ///< Current `.wodf` format version; readers reject 0 and values above this.
+	static constexpr uint32_t CURRENT_VERSION = 2; ///< Current `.wodf` format version; readers accept 1 and 2 and reject 0 and values above this.
 
 	uint32_t version = CURRENT_VERSION;        ///< Serialization format version written to the header.
 	QString fontFamilyName;                    ///< Font family name, serialized as length-prefixed UTF-8 (NUL included).
 	SDFType type;                              ///< Distance-field flavour: SDF, MSDF or MSDFA.
 	DistanceType distType;                     ///< Distance norm used during generation (Manhattan or Euclidean).
-	uint32_t bitmap_size;                      ///< **Stored** square size `S` after downsampling; `0` means "same as bitmap_logical_size".
+	uint32_t bitmap_size;                      ///< **Stored** square size `S`. Writers always write the real size (falling back to `L`); only historical version 1 files may contain `0` (= same as `bitmap_logical_size`).
 	uint32_t bitmap_logical_size;              ///< **Generation** square size `L`; padding is included in it.
 	uint32_t bitmap_padding;                   ///< Border `P` on all four sides, in pixels of the `L` grid. Not added on top of `L`.
 	bool hasVert;                              ///< Whether the vertical metrics (vertBearing*, vertAdvance) are meaningful.
@@ -129,6 +146,10 @@ struct PreprocessedFontFace {
 	float faceHeight = 0.0f;                   ///< Font: baseline-to-baseline distance in pixels at em = L - P. SVG: viewport height.
 	float maxAdvance = 0.0f;                   ///< Font: maximum advance in pixels at em = L - P. SVG: viewport width.
 	uint32_t unitsPerEm = 0;                   ///< Font: original design units per EM (converts pixels to font units). SVG: viewport height, not a design-unit count.
+	float distanceRangeX = 0.0f;               ///< **Version 2:** nominal encoded radius in X, in level-0 texels: `(samples_x/2 or padding) * S / L`.
+	float distanceRangeY = 0.0f;               ///< **Version 2:** nominal encoded radius in Y, in level-0 texels; same formula as X.
+	uint32_t encodingFlags = 0;                ///< **Version 2:** bitmask of StoredVectorImage::EncodingFlag values describing transforms baked into the pixels.
+	float midpointAdjustment = 1.0f;          ///< **Version 2:** baked midpoint divisor; only meaningful when EncodingHasMidpointAdjustment is set.
 	KerningMap kerning;                        ///< Sparse kerning table; offsets are pixels at em = L - P.
 	QMap<uint32_t,StoredCharacter> storedCharacters; ///< Glyph payloads keyed by Unicode code point.
 
@@ -180,12 +201,29 @@ struct PreprocessedFontFace {
 	QByteArray imageFormatBytes() const;
 
 	/**
+	 * @brief Re-encode and optionally rescale an already loaded font face.
+	 *
+	 * This is the supported operation for inputs loaded with `--inbin` /
+	 * `--incbor`; it never regenerates distance values. Each non-empty glyph
+	 * payload is decoded with QImage, rescaled to `newIntendedSize` when that is
+	 * non-zero, and re-encoded with `newImageFormat`. The header is updated:
+	 * `bitmap_size` becomes the new stored size (or `L` when it was 0),
+	 * `imageFormat` becomes `newImageFormat`, and the nominal distance ranges are
+	 * scaled with the size ratio. `bitmap_logical_size`, `bitmap_padding`, the
+	 * metrics and the kerning table are left untouched.
+	 * @param newImageFormat Codec name to write; empty keeps the current codec.
+	 * @param newIntendedSize New square stored size `S`; `0` keeps the current size.
+	 * @throws std::runtime_error if a payload cannot be decoded or encoded.
+	 */
+	void repack(const QByteArray& newImageFormat, uint32_t newIntendedSize = 0);
+
+	/**
 	 * @brief Export each glyph's encoded payload to an individual file.
- * @param pattern File path pattern with a `%1` placeholder for the code point
- *        (e.g. `glyph_%1.png`). The extension should match imageFormat, because
- *        the bytes are written as stored and not re-encoded.
- */
-void outToFolder(const QString& pattern) const;
+	 * @param pattern File path pattern with a `%1` placeholder for the code point
+	 *        (e.g. `glyph_%1.png`). The extension should match imageFormat, because
+	 *        the bytes are written as stored and not re-encoded.
+	 */
+	void outToFolder(const QString& pattern) const;
 };
 
 /**

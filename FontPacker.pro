@@ -3,7 +3,7 @@ QT += core gui opengl widgets openglwidgets core5compat
 CONFIG += c++2a cmdline
 
 INCLUDEPATH += /usr/include/freetype2
-INCLUDEPATH += I/usr/include/harfbuzz
+INCLUDEPATH += /usr/include/harfbuzz
 QMAKE_CXXFLAGS += -fopenmp
 QMAKE_CFLAGS += -fopenmp
 QMAKE_LFLAGS += -fopenmp

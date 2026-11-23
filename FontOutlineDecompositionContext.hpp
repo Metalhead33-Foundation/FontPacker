@@ -358,11 +358,9 @@ struct FontOutlineDecompositionContext {
 	 * @param maxX Output: largest source X before normalization.
 	 * @param minY Output: smallest source Y before normalization.
 	 * @param maxY Output: largest source Y before normalization.
-	 * @note The font and SVG generators currently bind to this overload even
-	 *       though they pass metric values, because the call site supplies
-	 *       `float` lvalues. Their `metricWidth`, `metricHeight`,
-	 *       `horiBearingX` and `horiBearingY` members therefore receive these
-	 *       four bounds. See BINARY_FORMAT.md, "Metric caveat".
+	 * @note This overload is used by StoredVectorImage generation, which needs
+	 *       the original source rectangle. The `.wodf` glyph path uses the
+	 *       metric-based overload instead.
 	 * @param invertY Flip Y so row 0 is the top of the outline (default: true).
 	 */
 	void translateToNewSize(unsigned nWidth, unsigned nHeight, unsigned paddingX, unsigned paddingY, float& minX, float& maxX, float& minY, float& maxY, bool invertY = true);
@@ -394,10 +392,9 @@ struct FontOutlineDecompositionContext {
 	 * @param horiBearingX X bearing of the metric box, in pixels.
 	 * @param horiBearingY Y bearing (top above baseline) of the metric box, in pixels.
 	 * @param invertY Flip Y so row 0 is the top of the glyph (default: true).
-	 * @warning This overload is not reached by the current generator: the call
-	 *          site passes `float` lvalues (StoredCharacter members), so C++
-	 *          prefers the bounds-capturing `float&` overload. Kept for a future
-	 *          fix; see BINARY_FORMAT.md, "Metric caveat".
+	 * @note This is the overload used for `.wodf` glyphs. `processOutlineGlyphEnd`
+	 *       passes `double` copies of the metric members, so the members are not
+	 *       modified. SVG glyphs use the viewport as their metric box.
 	 */
 	void translateToNewSize(unsigned nWidth, unsigned nHeight, unsigned paddingX, unsigned paddingY, double metricWidth, double metricHeight, double horiBearingX, double horiBearingY, bool invertY = true);
 	

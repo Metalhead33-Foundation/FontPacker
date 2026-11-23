@@ -26,10 +26,10 @@ Read this before the tables; it prevents the most common misreading of the forma
 2. Three different "sizes" exist and they are not interchangeable:
    - `bitmap_logical_size` (`L`) - the resolution at which the distance field was **generated**. Square. Padding is **inside** this size.
    - `bitmap_padding` (`P`) - the border, in **logical pixels**, added on all four sides. It is **part of** `L`, not added on top of it.
-   - `bitmap_size` (`S`) - the resolution of the image **actually stored** after downsampling. Square. `0` means "no downsampling was requested", i.e. the stored images are `L x L`.
-3. The glyph's content occupies the centred `(L - 2P) x (L - 2P)` box of the generation canvas, and it is **stretched anisotropically** to fill that box. The real aspect ratio comes back from `StoredCharacter::width` / `height` at runtime. Do not use the four float metric fields for this: they are overwritten for vector glyphs (see the metric caveat).
-4. For **font input**, the per-glyph metrics are **not in font units** and **not in final texels**. They are in the pixel space defined by FreeType's `em = L - P`; `advance_x` / `advance_y` are raw 26.6 fixed point, everything else is a float in pixels. For **SVG input**, all numeric fields are SVG user units and the integer advances are plain pixels. See the "Units and provenance of the glyph metrics" section below.
-5. `.wodf` does **not** store a signed-distance range, and does not record whether the values were inverted/gamma-corrected. `.wodi` stores both (`distanceRangeX`/`Y`, `encodingFlags`).
+   - `bitmap_size` (`S`) - the resolution of the image **actually stored** after downsampling. Square. Writers always store the real value; a legacy version 1 file may contain `0`, which means "no downsampling was requested" (the stored images are `L x L`).
+3. The glyph's content occupies the padded `(L - 2P) x (L - 2P)` box of the generation canvas, and it is **stretched anisotropically** to fill that box. The fit uses the **glyph metric box**: the FreeType metric box for fonts, and the SVG viewport for SVG input. The real aspect ratio comes back from `StoredCharacter::width` / `height` at runtime. All float metric fields keep their meaning in version 2 (see "Units and provenance").
+4. For **font input**, the per-glyph metrics are **not in font units** and **not in final texels**. They are in the pixel space defined by FreeType's `em = L - P`; `advance_x` / `advance_y` are raw 26.6 fixed point, everything else is a float in pixels. For **SVG input**, all numeric fields are in SVG user units, and the integer advances are 26.6 fixed point of those units. See the "Units and provenance of the glyph metrics" section below.
+5. `.wodf` **version 2** stores the nominal signed-distance ranges (`distanceRangeX`/`Y`), the baked-transform `encodingFlags` and `midpointAdjustment`; version 1 files do not. Both containers therefore expose the same metadata, but the range is only the nominal search radius, not an exact per-image scale (see "Distance value encoding").
 6. All multi-byte integers and floats are Big-Endian. `bool` is one byte. Variable-length strings are a `uint32` byte count (including the terminating NUL) followed by UTF-8 bytes and the NUL.
 
 ---
@@ -88,8 +88,8 @@ Downsample by k = S / L  ->  a full S x S stored image.
 ### The six rules
 
 1. **Padding is inside `L`.** The drawable area is `(L - 2P) x (L - 2P)`. Never compute `L + 2P`; that would be a canvas larger than the generated image.
-2. **The stored image is square, not the glyph.** Aspect ratio is destroyed on purpose (per-axis stretch, see below) so that every GPU tile has a predictable shape. `width`/`height` restore it for font input; SVG-backed faces use the viewport/shape pair described below.
-3. **`bitmap_size == 0` is legal.** It means `--intendedsize` was not given, no downsampling happened, and the stored images are `L x L`. Treat `S = (bitmap_size == 0 ? bitmap_logical_size : bitmap_size)`. `.wodi` never stores 0 for `actualSize` because it is assigned from the final image width.
+2. **The stored image is square, not the glyph.** Aspect ratio is destroyed on purpose (per-axis stretch, see below) so that every GPU tile has a predictable shape. `width`/`height` restore it for both font and SVG input; for SVG they are the viewport size.
+3. **`bitmap_size` is nonzero in files written by this version.** Writers resolve it to the real `S`, falling back to `L` when no downsampling happened. A legacy version 1 file may contain `0`; treat that as `S = L`. `.wodi` never stores 0 for `actualSize` because it is assigned from the final image width.
 4. **`P` is in logical pixels.** In the stored image it becomes `P_final = P * S / L`, which is fractional unless `P` is a multiple of `L / S`. Choose `P` as a multiple of `L / S` (for example `L=1024`, `S=64`, `P` a multiple of 16) if you need texel-exact content edges. FontPacker does not enforce this.
 5. **Square is a format invariant, power-of-two is not.** The format stores one integer per size, so both images must be square. Power-of-two sizes are only the default and the reason for the halving loop; non-power-of-two `S` is resampled to the exact value and is valid on any modern GPU.
 6. **The stored values are not distances in this pixel space.** Both generators normalise the distance field per image so that `0.5` is the contour and `1.0`/`0.0` are that image's maximum inside/outside distances. `P` is the nominal search radius (an upper bound), not a guaranteed distance scale. See the "Distance value encoding" section below.
@@ -102,24 +102,22 @@ Font input (`SdfGenerationContext::processFont`):
 
 1. FreeType is configured with `FT_Set_Pixel_Sizes(face, L - P, L - P)`. This is the **em size of the metric space**: 1 em = `L - P` pixels. The face metrics are read here (`ascender`, `descender`, `faceHeight`, `maxAdvance`).
 2. The outline is decomposed into line/quadratic/cubic segments (`FT_Outline_Decompose` into `FontOutlineDecompositionContext`).
-3. The decomposed outline is fitted to the inner content box. **In the current code the fit uses the outline's own control-point bounds, not the FreeType metric box.** `processOutlineGlyphEnd` calls
-   `translateToNewSize(L, L, P, P, output.metricWidth, output.metricHeight, output.horiBearingX, output.horiBearingY)`,
-   and because those four members are `float` lvalues, overload resolution selects the `float&` variants (the overload that *returns* `minX`, `maxX`, `minY`, `maxY`) instead of the metric-based overload. The actual mapping is therefore:
+3. The decomposed outline is fitted to the inner content box using the **FreeType metric box**:
+   ```text
+   minDim = (horiBearingX, horiBearingY - metricHeight)      // bottom-left of the metric box, relative to the baseline
+   scaleX = (L - 2P) / metricWidth
+   scaleY = (L - 2P) / metricHeight
+   x_tex  = (x - minDim.x) * scaleX + P
+   y_tex  = L - ((y - minDim.y) * scaleY + P)               // Y flipped once for the font path
    ```
-   minX..maxY = bounds of all active outline control points (source pixels at em = L - P)
-   scaleX = (L - 2P) / (maxX - minX)
-   scaleY = (L - 2P) / (maxY - minY)
-   x_tex  = (x - minX) * scaleX + P
-   y_tex  = L - ((y - minY) * scaleY + P)      // Y flipped once for the font path
-   ```
-   The four reference arguments are written with the source bounds, so **`metricWidth`, `metricHeight`, `horiBearingX` and `horiBearingY` end up holding `minX`, `maxX`, `minY` and `maxY`** for every vector glyph (see the metric caveat below). This is a **non-uniform** scale: a narrow `i` and a wide `W` both fill the same `(L - 2P)^2` box. That is the deliberate texel-usage trade-off; the real aspect ratio survives in `width`/`height`.
+   `processOutlineGlyphEnd` copies the four metric values into `double` locals before calling `translateToNewSize`, so the metric-based overload is selected and the members themselves are **not** modified. The scale is non-uniform: a narrow `i` and a wide `W` both fill the same `(L - 2P)^2` box. That is the deliberate texel-usage trade-off; the real aspect ratio survives in `width`/`height`, and the metric box is stored unchanged in `metricWidth`/`metricHeight`/`horiBearingX`/`horiBearingY`.
 4. The SDF/MSDF/MSDFA is evaluated on the `L x L` grid (`SdfGenerationGL::produceOutlineSdf`, or the bitmap variant).
 5. `downsampleToIntendedSize()` halves the image until the next power of two >= `S` is reached, then smooth-resamples to exactly `S` (if `S != 0`). The encoded result becomes `StoredCharacter::sdf` in `imageFormat`.
-6. The layout metrics (`width`, `height`, `bearing_x`, `bearing_y`, `advance_x`, `advance_y`) are copied **unchanged** from FreeType (they were measured at step 1, before the stretch in step 3). Four of the float fields are overwritten by the fit step, as described above; see the caveat after the field table. This is why `width`/`height` describe the intended layout and not the texture.
+6. The layout metrics (`width`, `height`, `bearing_x`, `bearing_y`, `advance_x`, `advance_y`) are copied **unchanged** from FreeType (they were measured at step 1, before the stretch in step 3), and every float metric keeps its metric-box value. This is why `width`/`height` describe the intended layout and not the texture.
 
-Bitmap input (`processBitmapGlyph`, used for bitmap fonts or `--forceraster`): the rasterised glyph is scaled to `(L - 2P)^2` ignoring aspect ratio, padded by `P` on every side, and then the SDF is generated from that `L x L` bitmap. All eight float metric fields keep their FreeType values, because this path does not call the fit step.
+Bitmap input (`processBitmapGlyph`, used for bitmap fonts or `--forceraster`): the rasterised glyph is scaled to `(L - 2P)^2` ignoring aspect ratio, padded by `P` on every side, and then the SDF is generated from that `L x L` bitmap. All eight float metric fields keep their FreeType values; this path does not call the fit.
 
-SVG input (`processSvg` / `processSvgShapes`): `width`/`height` and the integer advance fields are filled with the SVG **viewport** dimensions (in SVG user units), the bearings are left at 0, and the same `processOutlineGlyphEnd` fit is used. That fit measures the decomposed control-point bounds and, because of the overload-resolution quirk, writes `minX`, `maxX`, `minY`, `maxY` into the four float metric fields. The texture therefore contains the shape bounds, while `width`/`height` describe the viewport.
+SVG input (`processSvg` / `processSvgShapes`): `width`/`height`, the float metric box (`metricWidth = viewport width`, `metricHeight = viewport height`, `horiBearingX = 0`, `horiBearingY = viewport height`) and `horiAdvance` are all the SVG **viewport**; `advance_x`/`advance_y` are the viewport dimensions in 26.6 fixed point. The fit therefore maps the whole viewport onto the content box, preserving the shape's position and relative size inside the canvas. Bearing fields are 0. A zero-sized viewport is rejected with an error.
 
 ### Worked example
 
@@ -162,10 +160,15 @@ The whole tile is mapped to the whole expanded quad. Because the quad was expand
 Points to be aware of:
 
 - **Y-flip.** The font path calls `translateToNewSize(..., invertY = true)`, so row 0 of a glyph image is the top of the glyph and a Y-down quad is correct. The SVG path passes `invertY = false`; SVG user space is already Y-down, so row 0 is again the top. Both containers are stored top-row-first.
-- **Anisotropy.** `scaleX != scaleY` in general, so a circular distance band in the texture is an ellipse in the source. If the shader computes an antialiasing width in screen pixels, convert it per axis: `aaTexelsX = aaPx * S_in / width`, `aaTexelsY = aaPx * S_in / height` (using `S_in = (L - 2P) * S / L`). If you instead use a single isotropic width, outlines and glows will be thicker on one axis by `width / height`.
+- **Anisotropy.** `scaleX != scaleY` in general, so a circular distance band in the texture is an ellipse in the source. Do **not** use a constant antialiasing width in normalized-distance units; use screen-space derivatives, which automatically account for the per-axis stretch:
+  ```glsl
+  float aaWidth = length(vec2(dFdx(d), dFdy(d))); // d = sampled distance value
+  float alpha  = smoothstep(0.5 - aaWidth, 0.5 + aaWidth, d);
+  ```
+  If you must work in texture space, convert per axis: `aaTexelsX = aaPx * S_in / width`, `aaTexelsY = aaPx * S_in / height` with `S_in = (L - 2P) * S / L`.
 - **Kerning and advances** are in the same `em = L - P` pixel space as `width`, so they can be used directly with the intended box sizes. They do not need to be rescaled into texel space.
-- **SVG exception.** For a `.wodf` produced from an SVG, the content box holds the **shape bounds**, not the viewport: `width`/`height` are the viewport. To place the shape, draw the content box at `(maxX - minX) x (maxY - minY)` and offset it by `(minX, minY)` inside the viewport rectangle. Use `--outvectorbin` if you want these bounds stored under unambiguous names.
-- The runtime should treat `width`, `height`, `bearing_x`, `bearing_y`, `advance_*` and the kerning `Vec2f` as the layout data, and the tile merely as a resolution-independent fill for the content box. For font input that box is `width x height`; for SVG input it is the shape bounds inside the viewport (see the SVG exception above).
+- **SVG glyphs use the viewport.** For a `.wodf` produced from an SVG, `width`/`height` are the viewport, the metric box is the viewport, and the texture contains the whole viewport scaled into the content box. Draw the tile at the pen with the top-left of the viewport at `(bearing_x, -bearing_y)`; shapes keep their position inside the canvas. Use `--outvectorbin` if you need the shape bounds and logical rectangle under explicit names.
+- The runtime should treat `width`, `height`, `bearing_x`, `bearing_y`, `advance_*` and the kerning `Vec2f` as the layout data, and the tile merely as a resolution-independent fill for the content box. For both font and SVG input that box is `width x height`.
 
 ### Distance value encoding
 
@@ -177,9 +180,10 @@ Both backends compute a raw distance in **`L`-grid pixels**, then normalise it *
 
 Consequences:
 
-- A shader can use a constant threshold of `0.5` and a small constant antialiasing band regardless of glyph size.
-- Absolute distances cannot be reconstructed; there is no per-image normalisation factor in `.wodf`.
-- `.wodf` has **no** distance-range field, and it does **not** record which transforms were baked in. If you need pixel-accurate outline widths in a `.wodf`, use `P * S / L` as the nominal upper bound of the encoded radius and calibrate the shader from that, or prefer `.wodi`, which stores `distanceRangeX`/`Y` and `encodingFlags`.
+- A shader can use a constant threshold of `0.5` and a screen-space antialiasing band regardless of glyph size.
+- `.wodf` **version 2** stores the nominal `distanceRangeX`/`Y`, `encodingFlags` and `midpointAdjustment`, exactly like `.wodi`. The range is `(samples/2 or P) * S / L`, i.e. the search radius expressed in level-0 texels. Because each image is normalised by its own observed maximum, the actual value range can be smaller; use the stored range as an upper bound (`screenPxRange`) rather than an exact conversion.
+- Version 1 files have no such fields and are **not** upgraded automatically. FontPacker reconstructs the nominal padding-based range (`P * S / L`) in memory for convenience, but keeps the file at version 1 when rewriting, because the old bounds-based glyph layout and plain-pixel SVG advances cannot be converted without regeneration. Regenerate to obtain version 2.
+- Transforms that were baked into the bytes are recorded in `encodingFlags` (see the `.wodi` section for the bit values). The Software backend still ignores `--invert`, `--gammacorrect` and `--midpointadjustment`, so those flags are only set by the OpenGL backend.
 
 ---
 
@@ -190,12 +194,12 @@ Consequences:
 ```
 PreprocessedFontFace {
     magic                   char[4]     "WODF"
-    version                 uint32_t    1
+    version                 uint32_t    2 (current); 1 is still readable
     familyNameSize          uint32_t    byte count including the NUL (minimum 1)
     familyName              uint8[]     UTF-8, familyNameSize bytes, ends with 0x00
     type                    uint8_t     SDFType
     distType                uint8_t     DistanceType
-    bitmap_size             uint32_t    S (0 = same as bitmap_logical_size)
+    bitmap_size             uint32_t    S (version 2: always the real size; version 1: 0 = same as bitmap_logical_size)
     bitmap_logical_size     uint32_t    L
     bitmap_padding          uint32_t    P, in pixels of the L grid
     hasVert                 bool        1 byte
@@ -205,6 +209,10 @@ PreprocessedFontFace {
     faceHeight              float       pixels at em = L - P
     maxAdvance              float       pixels at em = L - P
     unitsPerEm              uint32_t    original font design units per EM
+    distanceRangeX          float       version 2: nominal encoded radius, level-0 texels
+    distanceRangeY          float       version 2: nominal encoded radius, level-0 texels
+    encodingFlags           uint32_t    version 2: bitmask of baked transforms
+    midpointAdjustment      float       version 2: baked midpoint divisor (if flagged)
     charCount               uint32_t    number of TOC entries == number of glyphs
     glyphTOC                GlyphTOC[charCount]
     kerning                 KerningMap
@@ -217,12 +225,12 @@ Absolute offsets, with `N = familyNameSize`:
 | Offset | Field | Type | Notes |
 |---|---|---|---|
 | 0 | `magic` | `char[4]` | `"WODF"` |
-| 4 | `version` | `uint32_t` | currently `1`; readers must reject `0` and `> 1` |
+| 4 | `version` | `uint32_t` | currently `2`; readers must accept `1` and `2`, and reject `0` and `> 2`. New generation writes 2; a loaded version 1 file is rewritten as 1. |
 | 8 | `familyNameSize` | `uint32_t` | includes the NUL |
 | 12 | `familyName` | `uint8[N]` | UTF-8 with NUL |
 | `12+N` | `type` | `uint8_t` | see the "Type enumerations" section below |
 | `12+N+1` | `distType` | `uint8_t` | see the "Type enumerations" section below |
-| `12+N+2` | `bitmap_size` | `uint32_t` | stored/level-0 square size `S`; `0` means "same as `L`" |
+| `12+N+2` | `bitmap_size` | `uint32_t` | stored/level-0 square size `S`; version 2 writers always write the real size, version 1 may contain `0` (= `L`) |
 | `12+N+6` | `bitmap_logical_size` | `uint32_t` | generation square size `L` |
 | `12+N+10` | `bitmap_padding` | `uint32_t` | border `P` in logical pixels, inside `L` |
 | `12+N+14` | `hasVert` | `bool` | vertical metrics valid? |
@@ -232,10 +240,16 @@ Absolute offsets, with `N = familyNameSize`:
 | `12+N+31` | `faceHeight` | `float` | baseline-to-baseline distance; font px, SVG viewport height |
 | `12+N+35` | `maxAdvance` | `float` | font px, SVG viewport width |
 | `12+N+39` | `unitsPerEm` | `uint32_t` | font: original design units per EM; SVG: viewport height |
-| `12+N+43` | `charCount` | `uint32_t` | |
-| `12+N+47` | `glyphTOC` | `GlyphTOC[charCount]` | 8 bytes each |
+| `12+N+43` | `distanceRangeX` | `float` | **version 2 only**; absent from a version 1 file |
+| `12+N+47` | `distanceRangeY` | `float` | **version 2 only** |
+| `12+N+51` | `encodingFlags` | `uint32_t` | **version 2 only** |
+| `12+N+55` | `midpointAdjustment` | `float` | **version 2 only** |
+| `12+N+59` | `charCount` | `uint32_t` | |
+| `12+N+63` | `glyphTOC` | `GlyphTOC[charCount]` | 8 bytes each |
 | ... | `kerning` | `KerningMap` | see below |
 | ... | `glyphData` | - | each entry starts at the absolute offset stored in the TOC |
+
+In a version 1 file the four version-2 fields are absent, so `charCount` is at `12+N+43` and the TOC starts at `12+N+47`.
 
 ### Face metrics
 
@@ -334,39 +348,58 @@ StoredCharacter {
 
 **Size arithmetic (corrected):** after the 1-byte `valid`, there are 6 integer fields (4 x `uint32_t` + 2 x `int32_t` = 24 bytes) and 8 floats (32 bytes), so the fixed part is **56 bytes**, followed by `sdfLength` (4 bytes). Therefore a valid glyph occupies **61 bytes + `sdfLength`**; an invalid glyph occupies exactly **1 byte**. (Earlier revisions of this document incorrectly claimed 72 fixed bytes and 77 total.)
 
+### Version 2 header fields
+
+`distanceRangeX`, `distanceRangeY`, `encodingFlags` and `midpointAdjustment` have exactly the same meaning and bit layout as in `StoredVectorImage` (see "Distance and encoding fields" below). They describe the generation run that produced every glyph in the file:
+
+- the ranges are the nominal search radius expressed in level-0 (`S`) texels;
+- the flags record which post-processing transforms are baked into the pixels;
+- `midpointAdjustment` is the divisor when `EncodingHasMidpointAdjustment` is set, otherwise `1.0`.
+
+The backend still normalises each image by its own observed maximum distance, so the stored range is an upper bound, not an exact per-glyph scale. Version 1 files have no such fields; the reader reconstructs `P * S / L` in memory for convenience. Loading a version 1 file and writing it back keeps version 1 (and does not write the four fields), because the glyph layout cannot be converted without regeneration. `--format` re-encodes the stored images and `--intendedsize` rescales them (see README, "Repacking stored containers"); those are the only generation-like options that apply to a loaded file.
+
+
 ### Units and provenance of the glyph metrics
 
-For **font input**, the single most important sentence is: **the float fields are in pixels, in the FreeType pixel space where 1 em = `bitmap_logical_size - bitmap_padding`; they are not in font units and not in stored texels.** The integer fields are the exception: `advance_x` and `advance_y` are raw 26.6 fixed point. See the metric caveat below for what four of the float fields actually contain.
+> **Version 1 legacy semantics.** Version 1 files were produced by the old fit
+> path: for outline and SVG glyphs the four float metric fields contain the
+> outline bounds (`minX`, `maxX`, `minY`, `maxY`), SVG `advance_x`/`advance_y`
+> are plain viewport pixels rather than 26.6, SVG textures contain the shape
+> bounds instead of the viewport, and `bitmap_size` may be 0. The table below
+> describes **version 2** output. Font layout fields (`width`, `height`,
+> bearings) remain usable for version 1, but version 1 SVG advances are plain
+> pixels; do not assume the version 2 metric semantics for those files.
 
-For **SVG input**, every numeric glyph field is in **SVG user units**: `width`/`height` and `horiAdvance` are the viewport size, `advance_x`/`advance_y` are plain viewport pixels (not 26.6), and the four clobbered float fields are the shape bounds in the same coordinate system.
+For **font input**, the single most important sentence is: **the float fields are in pixels, in the FreeType pixel space where 1 em = `bitmap_logical_size - bitmap_padding`; they are not in font units and not in stored texels.** The integer fields are the exception: `advance_x` and `advance_y` are raw 26.6 fixed point.
+
+For **SVG input**, every numeric glyph field is in **SVG user units**: `width`/`height` and `horiAdvance` are the viewport size, the float metric box is the viewport, and `advance_x`/`advance_y` are the viewport size in 26.6 fixed point, the same convention as fonts.
 
 | Field | Source in the code | Unit | Meaning |
 |---|---|---|---|
 | `valid` | `processOutlineGlyph` / `processBitmapGlyph` | bool | `false` (or an absent TOC entry) means no payload follows. `true` with `sdfLength == 0` is a legitimate **empty glyph** (e.g. space). |
-| `width` | `FT_GlyphSlot.bitmap.width` / SVG viewport | whole pixels | Font: intended width of the glyph box at `em = L - P`; the width the runtime should draw the content box at. The generator fits the outline's *bounds* (normally almost equal). SVG: the viewport width, **not** the shape width. It is **not** the texture size and does **not** include padding. |
+| `width` | `FT_GlyphSlot.bitmap.width` / SVG viewport | whole pixels | Font: intended width of the glyph box at `em = L - P`; the width the runtime should draw the content box at. SVG: the viewport width. It is **not** the texture size and does **not** include padding. |
 | `height` | `FT_GlyphSlot.bitmap.rows` / SVG viewport | whole pixels | Same, vertically. |
 | `bearing_x` | `FT_GlyphSlot.bitmap_left` | whole pixels | Horizontal offset from the pen origin to the left edge of the glyph box. Signed. Always 0 for SVG input. |
 | `bearing_y` | `FT_GlyphSlot.bitmap_top` | whole pixels | Vertical offset from the baseline **up** to the top edge of the glyph box. Signed. Always 0 for SVG input. |
-| `advance_x` | `FT_GlyphSlot.advance.x` / SVG viewport | **26.6 fixed point** (font) | Divide by 64 for pixels; `horiAdvance` is the same quantity as a float. **SVG:** plain viewport pixels, not 26.6. |
-| `advance_y` | `FT_GlyphSlot.advance.y` / SVG viewport | **26.6 fixed point** (font) | Same convention; usually 0 for horizontal fonts. **SVG:** plain viewport pixels. |
-| `metricWidth` | `FT_GlyphSlot.metrics.width` **or** outline `minX` | float pixels | **Raster glyphs:** metric-box width. **Outline fonts:** overwritten with the minimum X of the outline bounds (not a width). **SVG:** the shape bounds minimum X. |
-| `metricHeight` | `FT_GlyphSlot.metrics.height` **or** outline `maxX` | float pixels | **Raster glyphs:** metric-box height. **Outline fonts:** overwritten with the **maximum X** (not a height). **SVG:** the shape bounds maximum X. |
-| `horiBearingX` | `FT_GlyphSlot.metrics.horiBearingX` **or** outline `minY` | float pixels | **Raster glyphs:** sub-pixel bearing X. **Outline fonts:** overwritten with the minimum Y of the outline bounds. **SVG:** the shape bounds minimum Y. |
-| `horiBearingY` | `FT_GlyphSlot.metrics.horiBearingY` **or** outline `maxY` | float pixels | **Raster glyphs:** sub-pixel bearing Y. **Outline fonts:** overwritten with the **maximum Y** of the outline bounds. **SVG:** the shape bounds maximum Y. |
-| `horiAdvance` | `FT_GlyphSlot.metrics.horiAdvance` | float pixels | Font: `advance_x / 64`. SVG: viewport width (already plain pixels). |
+| `advance_x` | `FT_GlyphSlot.advance.x` / SVG viewport | **26.6 fixed point** | Divide by 64 for pixels; `horiAdvance` is the same quantity as a float. SVG values are the viewport width/height in 26.6. |
+| `advance_y` | `FT_GlyphSlot.advance.y` / SVG viewport | **26.6 fixed point** | Same convention; usually 0 for horizontal fonts. |
+| `metricWidth` | `FT_GlyphSlot.metrics.width` / SVG viewport width | float pixels | The metric-box width used by the fit. **Not** modified by the fit. |
+| `metricHeight` | `FT_GlyphSlot.metrics.height` / SVG viewport height | float pixels | The metric-box height used by the fit. |
+| `horiBearingX` | `FT_GlyphSlot.metrics.horiBearingX` / 0 | float pixels | Sub-pixel left bearing of the metric box. |
+| `horiBearingY` | `FT_GlyphSlot.metrics.horiBearingY` / SVG viewport height | float pixels | Sub-pixel top bearing of the metric box. |
+| `horiAdvance` | `FT_GlyphSlot.metrics.horiAdvance` / SVG viewport width | float pixels | Horizontal advance (`advance_x / 64`). |
 | `vertBearingX` | `FT_GlyphSlot.metrics.vertBearingX` | float pixels | Valid only when the face has vertical metrics (`hasVert`). |
 | `vertBearingY` | `FT_GlyphSlot.metrics.vertBearingY` | float pixels | |
 | `vertAdvance` | `FT_GlyphSlot.metrics.vertAdvance` | float pixels | |
 | `sdfLength` | length of the encoded image | bytes | |
-| `sdf` | `QImage::save(..., imageFormat)` | encoded bytes | A complete `S x S` image (or `L x L` when `S == 0`). Format is the header's `imageFormat`. Values are SDF/MSDF; see the "Distance value encoding" section below. |
+| `sdf` | `QImage::save(..., imageFormat)` | encoded bytes | A complete `S x S` image (or `L x L` for a legacy version 1 file with `S == 0`). Format is the header's `imageFormat`. Values are SDF/MSDF; see the "Distance value encoding" section below. |
 
 Notes:
 
-- **Metric caveat (current behaviour).** For glyphs generated from outlines or SVG, the four float fields `metricWidth`, `metricHeight`, `horiBearingX`, `horiBearingY` are **not** the FreeType metric box. The generator's call site passes `float` lvalues, so C++ overload resolution binds them to the bounds-capturing overload of `translateToNewSize`, which writes `minX`, `maxX`, `minY`, `maxY` into them. For font input their *units* are still pixels at `em = L - P` (the outline points are in that space); for SVG input they are user units. In both cases their *meaning* changes. Use `width`/`height`/`bearing_x`/`bearing_y` (and `horiAdvance`) for layout. The metric-based overload exists in the header but is not reached by the current generator.
-- For **raster** glyphs (`--forceraster`, bitmap fonts) the four float fields keep their FreeType metric-box values, because `processBitmapGlyph` does not go through the fit step.
-- **SVG-backed font faces have a different meaning for the integer fields.** `processSvg` sets `width`/`height` and `advance_x`/`advance_y` to the SVG **viewport**, while the texture contains the **shape bounds** stretched to fill the content box. The bounds are recoverable from the clobbered floats: `minX = metricWidth`, `maxX = metricHeight`, `minY = horiBearingX`, `maxY = horiBearingY`. Standalone `.wodi` files store the same rectangle explicitly and are the better choice for SVG graphics you need to place precisely.
-- The generator stretches the glyph **non-uniformly**; the scale is `(L - 2P)` divided by the measured outline extent (or by the metric box if the metric overload were reached). `width / height` is the aspect ratio the runtime should restore.
-- For SVG-backed `.wodf` files, `width`/`height` are the SVG viewport dimensions and `bearing_x`/`bearing_y` are 0. `unitsPerEm` is set to the viewport height, but these are not font design units: treat the SVG fields as source/user units. The four float metric fields hold the shape bounds, not the viewport (see the SVG bullet above).
+- **The fit uses the metric box.** `processOutlineGlyphEnd` passes `metricWidth`, `metricHeight`, `horiBearingX` and `horiBearingY` as `double` copies, so the metric overload of `translateToNewSize` is selected and the four members keep their FreeType values. They describe the box the glyph was stretched *from*, not the texture.
+- **Raster glyphs** (`--forceraster`, bitmap fonts) keep their FreeType metric values too. Their `width`/`height` are the raster bitmap dimensions; the raster path scales that bitmap into the content box instead of using the metric overload.
+- **SVG-backed font faces use the viewport throughout.** `processSvg` sets `width`/`height`, the four float metrics and `horiAdvance` to the viewport, sets the bearings to 0, and writes the viewport size in 26.6 into the integer advances. The texture contains the whole viewport, so the shape keeps its position inside the canvas.
+- The generator stretches the glyph **non-uniformly**; the scale is `(L - 2P) / metricWidth` by `(L - 2P) / metricHeight`. `width / height` is the aspect ratio the runtime should restore.
 - `hasVert == false` means vertical metrics are not meaningful; do not use `vertBearingX/Y` or `vertAdvance`.
 - A glyph entry is never padded to an alignment; the next TOC entry starts immediately after the last `sdf` byte of the previous one (blobs are written back to back, in code-point order).
 
@@ -453,6 +486,7 @@ Conversely, source coordinates map to logical texture pixels by `x_tex = P + (x 
   | `0x8` | `EncodingHasMidpointAdjustment` | `midpointAdjustment` holds a baked divisor |
 
 - `midpointAdjustment` is only meaningful when bit `0x8` is set; otherwise it is written as `1.0`.
+- Repacking a loaded `.wodi` to a different `actualSize` (`--intendedsize`) scales `distanceRangeX/Y` by `newActualSize / oldActualSize` and rebuilds the mip chain; re-encoding alone leaves the levels and ranges unchanged.
 - `mipmaps[0]` is level 0 at `actualSize`. Each subsequent entry is an independently encoded image of half the previous size. Mipmaps are only produced when `--createmipmaps` is passed (`processOutlineGlyphEnd(StoredVectorImage&, ...)`); otherwise `mipmapCount == 1`.
 - As with `.wodf`, each mip image is square, and `imageFormat` applies to every mip level.
 
@@ -461,7 +495,7 @@ Conversely, source coordinates map to logical texture pixels by `x_tex = P + (x 
 ## Reading algorithm (font)
 
 1. Read `magic` (`char[4]`). It must be `WODF` (`57 4F 44 46`).
-2. Read `version` (`uint32_t`). Supported value: `1`; reject `0` and anything greater.
+2. Read `version` (`uint32_t`). Supported values: `1` and `2`; reject `0` and anything greater.
 3. Read `familyNameSize` (`uint32_t`, includes the NUL).
 4. Read `familyNameSize` bytes of UTF-8; the last byte is `0x00`.
 5. Read the metadata in exactly this order:
@@ -470,7 +504,9 @@ Conversely, source coordinates map to logical texture pixels by `x_tex = P + (x 
    - `hasVert` (`bool`, 1 byte);
    - `imageFormat` (`char[8]`);
    - `ascender`, `descender`, `faceHeight`, `maxAdvance` (`float` each);
-   - `unitsPerEm`, `charCount` (`uint32_t` each).
+   - `unitsPerEm` (`uint32_t`);
+   - **version 2 only:** `distanceRangeX`, `distanceRangeY` (`float`), `encodingFlags` (`uint32_t`), `midpointAdjustment` (`float`);
+   - `charCount` (`uint32_t`).
 6. Read `charCount` TOC entries of 8 bytes each (`codePoint`, `offset`).
 7. Read the kerning map: `uint32 size`, then per entry `uint32 firstChar`, `uint32 pairCount`, then per pair `uint32 secondChar`, `float x`, `float y`.
 8. For each TOC entry: seek to its **absolute** `offset` and read a `StoredCharacter`:
@@ -483,8 +519,8 @@ A reader may ignore the TOC and read glyphs sequentially only if it also reads t
 
 ## Writing algorithm (font)
 
-1. Write magic, version, then `uint32(utf8.size() + 1)`, the UTF-8 bytes and a `0x00`.
-2. Write the metadata fields in the order listed above, with `charCount = storedCharacters.size()`.
+1. Write magic and the container `version` (`2` for new generation, `1` when rewriting a loaded version 1 file), then `uint32(utf8.size() + 1)`, the UTF-8 bytes and a `0x00`.
+2. Write the metadata fields in the order listed above. Write the four version-2 fields only when `version >= 2`. Use `charCount = storedCharacters.size()` and resolve `bitmap_size` to the real `S`.
 3. Remember the current position, then write `charCount` zeroed 8-byte TOC placeholders.
 4. Write the kerning map (size-prefixed nested maps).
 5. For each glyph in code-point order: remember the absolute position, write `StoredCharacter` (bool, fixed fields, `uint32 sdfLength`, raw bytes), and record `(codePoint, offset)`.
@@ -519,14 +555,14 @@ The code below mirrors `StoredCharacter::fromData` and `PreprocessedFontFace::fr
 def read_font(f):
     assert read_bytes(f, 4) == b'WODF'
     version = read_u32(f)
-    assert version == 1
+    assert version in (1, 2)
 
     name_size = read_u32(f)            # includes the NUL
     family_name = read_bytes(f, name_size)[:-1].decode('utf-8')
 
     sdf_type    = read_u8(f)
     dist_type   = read_u8(f)
-    bitmap_size = read_u32(f)          # S; 0 means "same as L"
+    bitmap_size = read_u32(f)          # S; version 1 may be 0 (= same as L)
     L           = read_u32(f)          # bitmap_logical_size
     P           = read_u32(f)          # bitmap_padding, logical px
     has_vert    = read_bool(f)
@@ -536,6 +572,15 @@ def read_font(f):
     face_height = read_f32(f)
     max_advance = read_f32(f)
     units_per_em = read_u32(f)
+    if version >= 2:
+        distance_range_x = read_f32(f)
+        distance_range_y = read_f32(f)
+        encoding_flags   = read_u32(f)
+        midpoint_adj     = read_f32(f)
+    else:
+        distance_range_x = distance_range_y = 0.0   # unknown in v1
+        encoding_flags = 0
+        midpoint_adj = 1.0
     char_count  = read_u32(f)
 
     toc = [(read_u32(f), read_u32(f)) for _ in range(char_count)]
@@ -547,10 +592,16 @@ def read_font(f):
         glyphs[code_point] = read_stored_character(f)
 
     S = bitmap_size if bitmap_size else L
+    if version < 2 and L:
+        distance_range_x = distance_range_y = P * S / L   # nominal reconstruction
     return dict(family=family_name, L=L, S=S, P=P, glyphs=glyphs,
                 kerning=kerning, units_per_em=units_per_em,
                 ascender=ascender, has_vert=has_vert, format=image_fmt,
-                sdf_type=sdf_type, dist_type=dist_type)
+                sdf_type=sdf_type, dist_type=dist_type,
+                distance_range_x=distance_range_x,
+                distance_range_y=distance_range_y,
+                encoding_flags=encoding_flags,
+                midpoint_adjustment=midpoint_adj)
 
 def read_kerning(f):
     result = {}
@@ -609,8 +660,13 @@ CBOR files carry the same data. The discriminator is the `containerType` string;
 | `format` | string | `imageFormat` (without NUL padding) |
 | `ascender` / `descender` / `faceHeight` / `maxAdvance` | float | the four face metrics |
 | `unitsPerEm` | unsigned | `unitsPerEm` |
+| `distanceRangeX` / `distanceRangeY` | float | **version 2:** nominal encoded ranges in level-0 texels |
+| `encodingFlags` | unsigned | **version 2:** bitmask of baked transforms |
+| `midpointAdjustment` | float | **version 2:** baked midpoint divisor |
 | `glyphs` | map: integer code point -> glyph map | `storedCharacters` |
 | `kerning` | map: first -> (map: second -> `[x, y]`) | `kerning` |
+
+Version 1 CBOR files omit the four version-2 keys; the reader defaults them to `0, 0, 0, 1.0` and `dimensions` may be `0`.
 
 Glyph map keys: `valid`, `width`, `height`, `bearing_x`, `bearing_y`, `advance_x`, `advance_y`, `metricsWidth`, `metricsHeight`, `horiBearingX`, `horiBearingY`, `horiAdvance`, `vertBearingX`, `vertBearingY`, `vertAdvance`, `sdf` (byte string).
 
@@ -637,19 +693,18 @@ Glyph map keys: `valid`, `width`, `height`, `bearing_x`, `bearing_y`, `advance_x
 - **`bool` is one byte**, not four. Enum-valued fields (`type`, `distType`) are one byte too.
 - **Strings**: only the family name uses the custom UTF-8 encoding. The length includes the terminating NUL, so the minimum is 1. Do not treat it as `QDataStream`'s `QString` encoding.
 - **`imageFormat` is 7 usable characters plus NUL.** `setImageFormat()` upper-cases and truncates; readers should stop at the first NUL and must not assume the remaining bytes are meaningful (the reader forces the last byte to `0`).
-- **`bitmap_size == 0`** means "the stored images are `L x L`". Do not divide by it; resolve `S` first.
+- **`bitmap_size == 0` only occurs in version 1 files.** It means "the stored images are `L x L`". Version 2 writers always write the real size. Do not divide by it; resolve `S = bitmap_size ? bitmap_size : L` first.
 - **Padding is not added twice.** `L` already contains `P`. The drawable content box is `L - 2P`.
-- **The FreeType em size is `L - P`, not `L - 2P`.** Metrics are measured at `em = L - P`, then the glyph is re-stretched to `L - 2P`. Do not convert metrics using `L - 2P` unless you are explicitly computing texture texel density.
-- **`advance_x` / `advance_y` are 26.6 fixed point.** `horiAdvance` / `vertAdvance` are the float-pixel equivalents. Mixing them up scales advances by 64. (SVG-backed glyphs are the exception: the SVG path fills the integer advance fields with plain viewport pixels, so `advance_x == horiAdvance` there. Use `horiAdvance` if you want one rule.)
-- **Four float metric fields are clobbered for vector glyphs.** `metricWidth`/`metricHeight`/`horiBearingX`/`horiBearingY` become `minX`/`maxX`/`minY`/`maxY` of the outline bounds (see the metric caveat above). This is a code-level bug, documented here so parsers do not misinterpret the values.
-- **`width` / `height` are intended layout pixels, not texture pixels.** The texture is `S x S` for every glyph in the font; the glyph's content box inside it is `S_in` texels wide.
-- **Each glyph image is independently normalised.** There is no global distance scale in `.wodf`; `0.5` is the contour in every image, but the value at distance `d` from the contour is not a constant multiple of `d`.
-- **Baked transforms are not recorded in `.wodf`.** Invert/gamma/midpoint adjustment change the bytes permanently; `.wodi` is the only container with `encodingFlags`.
-- **`.wodf` has no distance range.** `.wodi` does (`distanceRangeX` / `Y`), and even there the value is the nominal search radius, not an exact pixel-distance scale.
+- **The FreeType em size is `L - P`, not `L - 2P`.** Metrics are measured at `em = L - P`, then the glyph is re-stretched to the metric box inside the `L - 2P` content box. Do not convert metrics using `L - 2P` unless you are explicitly computing texture texel density.
+- **`advance_x` / `advance_y` are 26.6 fixed point for both font and SVG input.** `horiAdvance` / `vertAdvance` are the float-pixel equivalents. Mixing them up scales advances by 64.
+- **The float metric fields are the metric box.** In version 2 they are not overwritten by the fit: `metricWidth`/`metricHeight`/`horiBearingX`/`horiBearingY` describe the box the glyph was stretched from. For SVG input that box is the viewport.
+- **`width` / `height` are intended layout pixels, not texture pixels.** The texture is `S x S` for every glyph in the font; the glyph's content box inside it is `S_in` texels wide. For SVG input they are the viewport size.
+- **Each glyph image is independently normalised.** `0.5` is the contour in every image, but the value at distance `d` from the contour is not a constant multiple of `d`.
+- **Version 2 records the nominal ranges and baked transforms.** `distanceRangeX`/`Y`, `encodingFlags` and `midpointAdjustment` are present and match `.wodi`; version 1 files have none. The range is still the nominal search radius, not an exact per-image scale.
 - **Empty vs. invalid glyphs.** `valid == false` consumes one byte and is used for glyphs that could not be generated; `valid == true` with `sdfLength == 0` is a valid empty glyph such as a space. Both can appear in a TOC.
 - **The TOC is the index.** Offsets are absolute from the beginning of the file; a glyph blob never needs alignment. The file must be seekable.
 - **No global glyph ordering guarantee beyond the writer's `QMap` order.** Sort or index by code point if your code depends on order.
-- **Versioning is strict.** Version `0` and versions above `CURRENT_VERSION` are rejected by the reference reader. Add new fields only by bumping the version.
+- **Versioning is strict.** Version `0` and versions above `CURRENT_VERSION` are rejected by the reference reader. The reader accepts version 1 and 2; new generation writes 2, while a loaded version 1 file stays 1. Add new fields only by bumping the version.
 - **Mipmaps belong to `.wodi` only.** A `.wodf` glyph stores exactly one image; level-of-detail generation is the engine's job (or use a `.wodi`).
 - **CBOR is not binary-compatible.** The CBOR key for `bitmap_size` is the legacy `dimensions`; a tool that looks for a key literally named `bitmap_size` will not find it.
 
@@ -677,7 +732,7 @@ The generation mode (`Software`, `OpenGL`, `OpenCL`) is a runtime choice and is 
 | Term | Definition |
 |---|---|
 | generation size / logical size (`L`) | The square resolution at which the distance field is evaluated. Padding is inside it. |
-| stored size / actual size (`S`) | The square resolution of the encoded image (level 0). `0` in `.wodf` means "same as `L`". |
+| stored size / actual size (`S`) | The square resolution of the encoded image (level 0). Version 2 writers always store the real size; a legacy version 1 `.wodf` may contain `0`, meaning "same as `L`". |
 | padding (`P`) | Border on all four sides of the generation canvas, in logical pixels; part of `L`. |
 | content box | The centred `(L - 2P)^2` region that holds the glyph or graphic; it is `S_in` texels in the stored image. |
 | intended size | The glyph's layout box (`width` x `height`), in pixels at `em = L - P`; used to restore the aspect ratio and position on screen. |
@@ -690,8 +745,8 @@ The generation mode (`Software`, `OpenGL`, `OpenCL`) is a runtime choice and is 
 
 ## Minimum viable runtime checklist
 
-1. Parse the header; resolve `S = bitmap_size ? bitmap_size : bitmap_logical_size`.
+1. Parse the header (version 1 or 2); resolve `S = bitmap_size ? bitmap_size : bitmap_logical_size`.
 2. Decode each glyph's `sdf` with `imageFormat` into an `S x S` texture (or atlas cell).
 3. Keep `width`, `height`, `bearing_x`, `bearing_y`, `advance_*`, `kerning` in layout space.
-4. Expand the quad by `padX = width * P / (L - 2P)` and `padY = height * P / (L - 2P)` on each side, and map the full tile UVs to the expanded quad. For SVG-backed `.wodf` files use the shape bounds instead of `width`/`height` for the content size (see the SVG bullet).
-5. Threshold the SDF at `0.5`; scale the antialiasing/outline width per axis by `W / H` (or use `distanceRangeX/Y` for `.wodi`).
+4. Expand the quad by `padX = width * P / (L - 2P)` and `padY = height * P / (L - 2P)` on each side, and map the full tile UVs to the expanded quad. This applies to font and SVG glyphs alike; SVG `width`/`height` are the viewport.
+5. Threshold the SDF at `0.5`; derive the antialiasing width from screen-space derivatives (`dFdx`/`dFdy`), which handles the anisotropic stretch. If you need the nominal encoded radius, use `distanceRangeX/Y` (version 2 `.wodf` and all `.wodi`).

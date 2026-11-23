@@ -307,7 +307,17 @@ void SdfGenerationContext::processOutlineGlyph(StoredCharacter& output, FT_Glyph
 
 void SdfGenerationContext::processOutlineGlyphEnd(StoredCharacter& output, const SDFGenerationArguments& args, bool flipY)
 {
-	decompositionContext.translateToNewSize(args.internalProcessSize,args.internalProcessSize,args.padding,args.padding, output.metricWidth, output.metricHeight, output.horiBearingX, output.horiBearingY, flipY);
+	// The fit must use the FreeType metric box, not the outline bounds. Copy the
+	// fields into doubles first, otherwise C++ prefers the bounds-capturing
+	// `float&` overload and overwrites the metrics with min/max values.
+	const double metricWidth = output.metricWidth;
+	const double metricHeight = output.metricHeight;
+	const double horiBearingX = output.horiBearingX;
+	const double horiBearingY = output.horiBearingY;
+	if(metricWidth <= 0.0 || metricHeight <= 0.0) {
+		throw std::runtime_error("Glyph metrics are empty or degenerate.");
+	}
+	decompositionContext.translateToNewSize(args.internalProcessSize,args.internalProcessSize,args.padding,args.padding, metricWidth, metricHeight, horiBearingX, horiBearingY, flipY);
 	if(args.msdfgenColouring) decompositionContext.assignColoursMsdfgen();
 	else decompositionContext.assignColours();
 
@@ -434,10 +444,14 @@ void SdfGenerationContext::processFont(PreprocessedFontFace& output, const SDFGe
 	output.version = PreprocessedFontFace::CURRENT_VERSION;
 	output.type = args.type;
 	output.distType = args.distType;
-	output.bitmap_size = args.intendedSize;
+	output.bitmap_size = args.intendedSize ? args.intendedSize : args.internalProcessSize;
 	output.bitmap_logical_size = args.internalProcessSize;
 	output.bitmap_padding = args.padding;
 	output.setImageFormat(args.imageFormat);
+	output.distanceRangeX = effectiveDistanceRange(args.samples_to_check_x, args, output.bitmap_size);
+	output.distanceRangeY = effectiveDistanceRange(args.samples_to_check_y, args, output.bitmap_size);
+	output.encodingFlags = vectorEncodingFlags(args);
+	output.midpointAdjustment = args.midpointAdjustment.value_or(1.0f);
 	unsigned to_scale = args.internalProcessSize - args.padding;
 	FT_Face face;
 	auto fpath = args.font_path.toStdString();
@@ -511,13 +525,20 @@ void SdfGenerationContext::processFont(PreprocessedFontFace& output, const SDFGe
 void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteArray& buff, const SDFGenerationArguments& args)
 {
 	SvgDiagramPtr diagram = parseSvgDiagram(buff);
+	if(diagram->width <= 0 || diagram->height <= 0) {
+		throw std::runtime_error("SVG viewport has zero size.");
+	}
 	output.version = PreprocessedFontFace::CURRENT_VERSION;
 	output.type = args.type;
 	output.distType = args.distType;
-	output.bitmap_size = args.intendedSize;
+	output.bitmap_size = args.intendedSize ? args.intendedSize : args.internalProcessSize;
 	output.bitmap_logical_size = args.internalProcessSize;
 	output.bitmap_padding = args.padding;
 	output.setImageFormat(args.imageFormat);
+	output.distanceRangeX = effectiveDistanceRange(args.samples_to_check_x, args, output.bitmap_size);
+	output.distanceRangeY = effectiveDistanceRange(args.samples_to_check_y, args, output.bitmap_size);
+	output.encodingFlags = vectorEncodingFlags(args);
+	output.midpointAdjustment = args.midpointAdjustment.value_or(1.0f);
 	output.hasVert = false;
 	output.fontFamilyName = QStringLiteral("SVG");
 	output.ascender = diagram->height;
@@ -534,8 +555,9 @@ void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteA
 				storedChar.height = diagram->height;
 				storedChar.bearing_x = 0;
 				storedChar.bearing_y = 0;
-				storedChar.advance_x = diagram->width;
-				storedChar.advance_y = diagram->height;
+				// Advances use the same 26.6 fixed-point unit as font glyphs.
+				storedChar.advance_x = static_cast<uint32_t>(diagram->width) * 64u;
+				storedChar.advance_y = static_cast<uint32_t>(diagram->height) * 64u;
 				storedChar.metricWidth = storedChar.width;
 				storedChar.metricHeight = storedChar.height;
 				storedChar.horiBearingX = 0;
@@ -555,8 +577,9 @@ void SdfGenerationContext::processSvg(PreprocessedFontFace& output, const QByteA
 			storedChar.height = diagram->height;
 			storedChar.bearing_x = 0;
 			storedChar.bearing_y = 0;
-			storedChar.advance_x = diagram->width;
-			storedChar.advance_y = diagram->height;
+			// Advances use the same 26.6 fixed-point unit as font glyphs.
+			storedChar.advance_x = static_cast<uint32_t>(diagram->width) * 64u;
+			storedChar.advance_y = static_cast<uint32_t>(diagram->height) * 64u;
 			storedChar.metricWidth = storedChar.width;
 			storedChar.metricHeight = storedChar.height;
 			storedChar.horiBearingX = 0;

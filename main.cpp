@@ -19,11 +19,69 @@
 #include <QVariant>
 #include <QTextStream>
 #include <QFile>
+#include <QStringList>
+#include <stdexcept>
 #include "ConstStrings.hpp"
 #include "SdfGenerationContext.hpp"
 #include "SdfGenerationGL.hpp"
 #include "SdfGenerationContextSoft.hpp"
 #include "MainWindow.hpp"
+
+namespace {
+
+/**
+ * @brief Options that only make sense while generating from a font or SVG.
+ *
+ * They cannot be applied to an already stored `.wodf`/`.wodi` because the
+ * distance values and outlines are not present. Passing one of them with a
+ * stored input is an error instead of being silently ignored.
+ */
+const QStringList& generationOnlyKeys()
+{
+	static const QStringList keys = {
+		MODE_KEY, TYPE_KEY, DIST_KEY, INTERNAL_PROCESS_SIZE_KEY, PADDING_KEY,
+		SAMPLES_TO_CHECK_X_KEY, SAMPLES_TO_CHECK_Y_KEY, CHAR_MIN_KEY, CHAR_MAX_KEY,
+		FORCE_RASTER_KEY, INVERT_KEY, GAMMA_CORRECT_KEY, MIDPOINT_ADJUSTMENT_KEY,
+		MAXIMIZE_INSTEAD_OF_AVERAGE_KEY, MSDFGEN_COLOURING
+	};
+	return keys;
+}
+
+QByteArray requestedImageFormat(const QVariantMap& args)
+{
+	if(!args.contains(IMAGE_FORMAT_KEY)) return {};
+	return args.value(IMAGE_FORMAT_KEY).toString().trimmed().toUpper().toLatin1();
+}
+
+uint32_t requestedIntendedSize(const QVariantMap& args)
+{
+	if(!args.contains(INTENDED_SIZE_KEY)) return 0;
+	return args.value(INTENDED_SIZE_KEY).toUInt();
+}
+
+void validateLoadedInputOptions(const QVariantMap& args, bool isVectorImage)
+{
+	for(const QString& key : generationOnlyKeys()) {
+		if(args.contains(key)) {
+			throw std::runtime_error(QStringLiteral("Option --%1 requires --infont or --insvg; it cannot be applied to a stored .wodf/.wodi file.")
+									 .arg(key).toStdString());
+		}
+	}
+	if(args.contains(CREATE_MIPMAPS_KEY) && !isVectorImage) {
+		throw std::runtime_error("Option --createmipmaps is only meaningful for --invectorbin/--invectorcbor input.");
+	}
+}
+
+QStringList presentInputKeys(const QVariantMap& args)
+{
+	QStringList present;
+	for(const QString& key : {IN_FONT_KEY, IN_SVG_KEY, IN_BIN_KEY, IN_CBOR_KEY, IN_VECTOR_BIN_KEY, IN_VECTOR_CBOR_KEY}) {
+		if(args.contains(key)) present.push_back(key);
+	}
+	return present;
+}
+
+}
 
 /**
  * @brief Parse command-line arguments into a QVariantMap.
@@ -45,142 +103,171 @@ int main(int argc, char *argv[])
 	setlocale(LC_ALL, "C");
 	auto args = parseArguments(argc,argv);
 	if(args.contains(QStringLiteral("nogui"))) {
-		QTextStream strm(stdout);
-		for(auto it = std::begin(args); it != std::end(args); ++it) {
-			strm << it.key() << ' ' << it.value().toString() << '\n';
-		}
-		strm.flush();
-		PreprocessedFontFace fontface;
-		StoredVectorImage vectorImage;
-		bool hasFontFace = false;
-		bool hasVectorImage = false;
-		if( args.contains( IN_FONT_KEY ) ) {
-			SDFGenerationArguments sdfArgs;
-			sdfArgs.fromArgs(args);
-			std::unique_ptr<SdfGenerationContext> ctx;
-			switch (sdfArgs.mode) {
-				case SOFTWARE: ctx = std::make_unique<SdfGenerationContextSoft>(); break;
-				case OPENGL_COMPUTE: ctx = std::make_unique<SdfGenerationGL>(sdfArgs); break;
-				case OPENCL: throw std::runtime_error("Unsupported mode!");
-					break;
+		try {
+			QTextStream strm(stdout);
+			for(auto it = std::begin(args); it != std::end(args); ++it) {
+				strm << it.key() << ' ' << it.value().toString() << '\n';
 			}
-			ctx->processFont(fontface,sdfArgs);
-			hasFontFace = true;
-		}
-		if( args.contains( IN_SVG_KEY ) ) {
-			auto svgpath = args[IN_SVG_KEY].toString();
-			SDFGenerationArguments sdfArgs;
-			sdfArgs.fromArgs(args);
-			std::unique_ptr<SdfGenerationContext> ctx;
-			switch (sdfArgs.mode) {
-				case SOFTWARE: ctx = std::make_unique<SdfGenerationContextSoft>(); break;
-				case OPENGL_COMPUTE: ctx = std::make_unique<SdfGenerationGL>(sdfArgs); break;
-				case OPENCL: throw std::runtime_error("Unsupported mode!");
-					break;
+			strm.flush();
+			const QStringList inputs = presentInputKeys(args);
+			if(inputs.size() > 1) {
+				throw std::runtime_error(QStringLiteral("Exactly one input option is supported, but %1 were supplied.")
+										 .arg(inputs.join(QStringLiteral(", "))).toStdString());
 			}
-			QFile svgFile(svgpath);
-			if( svgFile.open(QFile::ReadOnly) ) {
-				const QByteArray svgData = svgFile.readAll();
-				const bool wantsVectorImage = args.contains(OUT_VECTOR_BIN_KEY) || args.contains(OUT_VECTOR_CBOR_KEY);
-				const bool wantsFontFace = args.contains(OUT_BIN_KEY) || args.contains(OUT_CBOR_KEY) || args.contains(OUT_FONT_KEY) || !wantsVectorImage;
-				if(wantsFontFace) {
-					ctx->processSvg(fontface, svgData, sdfArgs);
-					hasFontFace = true;
+			const bool loadedInput = args.contains(IN_BIN_KEY) || args.contains(IN_CBOR_KEY)
+									 || args.contains(IN_VECTOR_BIN_KEY) || args.contains(IN_VECTOR_CBOR_KEY);
+			const bool loadedVectorInput = args.contains(IN_VECTOR_BIN_KEY) || args.contains(IN_VECTOR_CBOR_KEY);
+			if(loadedInput) validateLoadedInputOptions(args, loadedVectorInput);
+
+			PreprocessedFontFace fontface;
+			StoredVectorImage vectorImage;
+			bool hasFontFace = false;
+			bool hasVectorImage = false;
+			if( args.contains( IN_FONT_KEY ) ) {
+				SDFGenerationArguments sdfArgs;
+				sdfArgs.fromArgs(args);
+				std::unique_ptr<SdfGenerationContext> ctx;
+				switch (sdfArgs.mode) {
+					case SOFTWARE: ctx = std::make_unique<SdfGenerationContextSoft>(); break;
+					case OPENGL_COMPUTE: ctx = std::make_unique<SdfGenerationGL>(sdfArgs); break;
+					case OPENCL: throw std::runtime_error("Unsupported mode!");
+						break;
 				}
-				if(wantsVectorImage) {
-					ctx->processSvg(vectorImage, svgData, sdfArgs);
+				ctx->processFont(fontface,sdfArgs);
+				hasFontFace = true;
+			}
+			if( args.contains( IN_SVG_KEY ) ) {
+				auto svgpath = args[IN_SVG_KEY].toString();
+				SDFGenerationArguments sdfArgs;
+				sdfArgs.fromArgs(args);
+				std::unique_ptr<SdfGenerationContext> ctx;
+				switch (sdfArgs.mode) {
+					case SOFTWARE: ctx = std::make_unique<SdfGenerationContextSoft>(); break;
+					case OPENGL_COMPUTE: ctx = std::make_unique<SdfGenerationGL>(sdfArgs); break;
+					case OPENCL: throw std::runtime_error("Unsupported mode!");
+						break;
+				}
+				QFile svgFile(svgpath);
+				if( svgFile.open(QFile::ReadOnly) ) {
+					const QByteArray svgData = svgFile.readAll();
+					const bool wantsVectorImage = args.contains(OUT_VECTOR_BIN_KEY) || args.contains(OUT_VECTOR_CBOR_KEY);
+					const bool wantsFontFace = args.contains(OUT_BIN_KEY) || args.contains(OUT_CBOR_KEY) || args.contains(OUT_FONT_KEY) || !wantsVectorImage;
+					if(wantsFontFace) {
+						ctx->processSvg(fontface, svgData, sdfArgs);
+						hasFontFace = true;
+					}
+					if(wantsVectorImage) {
+						ctx->processSvg(vectorImage, svgData, sdfArgs);
+						hasVectorImage = true;
+					}
+				}
+			}
+			else if( args.contains( IN_VECTOR_BIN_KEY ) ) {
+				QFile fil(args.value(IN_VECTOR_BIN_KEY).toString());
+				if(fil.open(QFile::ReadOnly)) {
+					QDataStream binF(&fil);
+					binF.setVersion(QDataStream::Qt_4_0);
+					binF.setByteOrder(QDataStream::BigEndian);
+					vectorImage.fromData(binF);
 					hasVectorImage = true;
 				}
 			}
-		}
-		else if( args.contains( IN_VECTOR_BIN_KEY ) ) {
-			QFile fil(args.value(IN_VECTOR_BIN_KEY).toString());
-			if(fil.open(QFile::ReadOnly)) {
-				QDataStream binF(&fil);
-				binF.setVersion(QDataStream::Qt_4_0);
-				binF.setByteOrder(QDataStream::BigEndian);
-				vectorImage.fromData(binF);
-				hasVectorImage = true;
+			else if( args.contains( IN_VECTOR_CBOR_KEY ) ) {
+				QFile fil(args.value(IN_VECTOR_CBOR_KEY).toString());
+				if(fil.open(QFile::ReadOnly)) {
+					QCborValue cborv = QCborValue::fromCbor(fil.readAll());
+					fil.close();
+					vectorImage.fromCbor(cborv.toMap());
+					hasVectorImage = true;
+				}
 			}
-		}
-		else if( args.contains( IN_VECTOR_CBOR_KEY ) ) {
-			QFile fil(args.value(IN_VECTOR_CBOR_KEY).toString());
-			if(fil.open(QFile::ReadOnly)) {
-				QCborValue cborv = QCborValue::fromCbor(fil.readAll());
-				fil.close();
-				vectorImage.fromCbor(cborv.toMap());
-				hasVectorImage = true;
+			else if( args.contains( IN_BIN_KEY ) ) {
+				QFile fil(args.value(IN_BIN_KEY).toString());
+				if(fil.open(QFile::ReadOnly)) {
+					QDataStream binF(&fil);
+					binF.setVersion(QDataStream::Qt_4_0);
+					binF.setByteOrder(QDataStream::BigEndian);
+					fontface.fromData(binF);
+					hasFontFace = true;
+				}
 			}
-		}
-		else if( args.contains( IN_BIN_KEY ) ) {
-			QFile fil(args.value(IN_BIN_KEY).toString());
-			if(fil.open(QFile::ReadOnly)) {
-				QDataStream binF(&fil);
-				binF.setVersion(QDataStream::Qt_4_0);
-				binF.setByteOrder(QDataStream::BigEndian);
-				fontface.fromData(binF);
-				hasFontFace = true;
+			else if( args.contains( IN_CBOR_KEY ) ) {
+				QFile fil(args.value(IN_CBOR_KEY).toString());
+				if(fil.open(QFile::ReadOnly)) {
+					QCborValue cborv = QCborValue::fromCbor(fil.readAll());
+					fil.close();
+					fontface.fromCbor(cborv.toMap());
+					hasFontFace = true;
+				}
 			}
-		}
-		else if( args.contains( IN_CBOR_KEY ) ) {
-			QFile fil(args.value(IN_CBOR_KEY).toString());
-			if(fil.open(QFile::ReadOnly)) {
-				QCborValue cborv = QCborValue::fromCbor(fil.readAll());
-				fil.close();
-				fontface.fromCbor(cborv.toMap());
-				hasFontFace = true;
-			}
-		}
 
-		if(args.contains( OUT_FONT_KEY )) {
-			if(!hasFontFace) throw std::runtime_error("No preprocessed font face was loaded or generated.");
-			fontface.outToFolder( args.value(OUT_FONT_KEY).toString() );
-		}
-		if(args.contains( OUT_BIN_KEY )) {
-			if(!hasFontFace) throw std::runtime_error("No preprocessed font face was loaded or generated.");
-			QFile fil(args.value(OUT_BIN_KEY).toString());
-			if(fil.open(QFile::WriteOnly)) {
-				QDataStream binF(&fil);
-				binF.setVersion(QDataStream::Qt_4_0);
-				binF.setByteOrder(QDataStream::BigEndian);
-				fontface.toData(binF);
-				fil.flush();
-				fil.close();
+			if(loadedInput && (args.contains(IMAGE_FORMAT_KEY) || args.contains(INTENDED_SIZE_KEY)
+						   || (loadedVectorInput && args.contains(CREATE_MIPMAPS_KEY)))) {
+				const QByteArray repackFormat = requestedImageFormat(args);
+				const uint32_t repackSize = requestedIntendedSize(args);
+				if(hasFontFace) {
+					fontface.repack(repackFormat, repackSize);
+				}
+				if(hasVectorImage) {
+					vectorImage.repack(repackFormat, repackSize, args.contains(CREATE_MIPMAPS_KEY));
+				}
 			}
-		}
-		if(args.contains( OUT_CBOR_KEY )) {
-			if(!hasFontFace) throw std::runtime_error("No preprocessed font face was loaded or generated.");
-			QFile fil(args.value(OUT_CBOR_KEY).toString());
-			if(fil.open(QFile::WriteOnly)) {
-				QCborValue cbor = fontface.toCbor();
-				fil.write(cbor.toCbor());
-				fil.flush();
-				fil.close();
+
+			if(args.contains( OUT_FONT_KEY )) {
+				if(!hasFontFace) throw std::runtime_error("No preprocessed font face was loaded or generated.");
+				fontface.outToFolder( args.value(OUT_FONT_KEY).toString() );
 			}
-		}
-		if(args.contains( OUT_VECTOR_BIN_KEY )) {
-			if(!hasVectorImage) throw std::runtime_error("No stored vector image was loaded or generated.");
-			QFile fil(args.value(OUT_VECTOR_BIN_KEY).toString());
-			if(fil.open(QFile::WriteOnly)) {
-				QDataStream binF(&fil);
-				binF.setVersion(QDataStream::Qt_4_0);
-				binF.setByteOrder(QDataStream::BigEndian);
-				vectorImage.toData(binF);
-				fil.flush();
-				fil.close();
+			if(args.contains( OUT_BIN_KEY )) {
+				if(!hasFontFace) throw std::runtime_error("No preprocessed font face was loaded or generated.");
+				QFile fil(args.value(OUT_BIN_KEY).toString());
+				if(fil.open(QFile::WriteOnly)) {
+					QDataStream binF(&fil);
+					binF.setVersion(QDataStream::Qt_4_0);
+					binF.setByteOrder(QDataStream::BigEndian);
+					fontface.toData(binF);
+					fil.flush();
+					fil.close();
+				}
 			}
-		}
-		if(args.contains( OUT_VECTOR_CBOR_KEY )) {
-			if(!hasVectorImage) throw std::runtime_error("No stored vector image was loaded or generated.");
-			QFile fil(args.value(OUT_VECTOR_CBOR_KEY).toString());
-			if(fil.open(QFile::WriteOnly)) {
-				QCborValue cbor = vectorImage.toCbor();
-				fil.write(cbor.toCbor());
-				fil.flush();
-				fil.close();
+			if(args.contains( OUT_CBOR_KEY )) {
+				if(!hasFontFace) throw std::runtime_error("No preprocessed font face was loaded or generated.");
+				QFile fil(args.value(OUT_CBOR_KEY).toString());
+				if(fil.open(QFile::WriteOnly)) {
+					QCborValue cbor = fontface.toCbor();
+					fil.write(cbor.toCbor());
+					fil.flush();
+					fil.close();
+				}
 			}
+			if(args.contains( OUT_VECTOR_BIN_KEY )) {
+				if(!hasVectorImage) throw std::runtime_error("No stored vector image was loaded or generated.");
+				QFile fil(args.value(OUT_VECTOR_BIN_KEY).toString());
+				if(fil.open(QFile::WriteOnly)) {
+					QDataStream binF(&fil);
+					binF.setVersion(QDataStream::Qt_4_0);
+					binF.setByteOrder(QDataStream::BigEndian);
+					vectorImage.toData(binF);
+					fil.flush();
+					fil.close();
+				}
+			}
+			if(args.contains( OUT_VECTOR_CBOR_KEY )) {
+				if(!hasVectorImage) throw std::runtime_error("No stored vector image was loaded or generated.");
+				QFile fil(args.value(OUT_VECTOR_CBOR_KEY).toString());
+				if(fil.open(QFile::WriteOnly)) {
+					QCborValue cbor = vectorImage.toCbor();
+					fil.write(cbor.toCbor());
+					fil.flush();
+					fil.close();
+				}
+			}
+			return 0;
+		} catch(const std::exception& exp) {
+			QTextStream err(stderr);
+			err << "Error: " << exp.what() << '\n';
+			err.flush();
+			return 1;
 		}
-		return 0;
 	} else {
 
 		// Set up code that uses the Qt event loop here.
